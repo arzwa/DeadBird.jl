@@ -2,3 +2,7 @@ name = "BirdDad"
 uuid = "a6db34b6-ea8f-496d-a49f-6ef7ed1dec48"
 authors = ["arzwa <arzwa@psb.vib.ugent.be>"]
 version = "0.1.0"
+
+[deps]
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
+TransformVariables = "84d833dd-6860-57f9-a1a7-6da5db126cff"

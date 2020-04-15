@@ -1,48 +1,48 @@
-using NewickTree, Parameters, Distributions
+# The RatesModel interface implements two functions: getθ(ratesmodel, node) to obtain the parameters associated with a node in the model and the function (::ratesmodel)(params) to obtain a new properly typed model object from a pre-existing one with new parameters
 
-struct PhyloBDP{I,T,M}
-    rates::M
-    nodes::Dict{I,Node{I,T}}  # stored in postorder
-    order::Vector{Node{I,T}}
-end
+# As in the Whale implementation, we would also want a transformation to be defined. That would define all necessary interfacing for doing optimization and NUTS?
 
-function PhyloBDP(rates, node::Node, m::Int)
-    function walk(x, y)
-        y′ = isroot(x) ?
-            Node(id(x), NodeProbs(x, m)) :
-            Node(id(x), NodeProbs(x, m), y)
-        for c in children(x) walk(c, y′) end
-        return y′
-    end
-    n = walk(node, nothing)
-    order = postwalk(n)
-    for n in order
-        setϵ!(n, rates)
-        setW!(n, rates)
-    end
-    PhyloBDP(rates, Dict(id(n)=>n for n in order), order)
-end
+# IDEA: define a WGD model as a wrapper around a RatesModel.
 
-Base.getindex(m::PhyloBDP, i) = m.nodes[i]
-
-struct NodeProbs{T}
-    name::String  # leaf name/wgd/wgt ...
-    t::T
-    ϵ::Vector{T}
-    W::Matrix{T}
-end
+# XXX: think about how we could efficiently 'fix' parameters.
 
 abstract type RatesModel{T} end
 
-@with_kw struct ConstantDLG{T} <: RatesModel{T}
+"""
+    ConstantDLG{T}
+
+Simple constant rates duplication-loss and gain model. All nodes of
+the tree are associated with the same parameters (duplication rate λ,
+loss rate μ, gain rate κ). This assumes a shifted geometric distribution
+on the family size at the root with mean 1/η.
+"""
+@with_kw struct ConstantDLG{T} <: Params{T}
     λ::T
     μ::T
     κ::T = 0.
     η::T = 0.66
 end
 
+getθ(m::ConstantDLG, node) = m
+trans(::ConstantDLG) = as((λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀))
+(::ConstantDLG)(θ) = ConstantDLG(promote(θ...)...)
+
+function Base.rand(m::M) where M<:RatesModel
+    t = trans(m)
+    M(;t(randn(dimension(t)))...)
+end
+
+struct NodeProbs{T}
+    name::String  # leaf name/wgd/wgt ...
+    t::Float64    # usually distances have a fixed type
+    ϵ::Vector{T}
+    W::Matrix{T}
+end
+
 const ModelNode{T,I} = Node{I,NodeProbs{T}}
 NodeProbs(n, m::Int) = NodeProbs(name(n), distance(n), zeros(2), zeros(m,m))
+NodeProbs(n, m::Int, T::Type) =
+    NodeProbs(name(n), distance(n), zeros(T, 2), zeros(T, m,m))
 Base.show(io::IO, n::NodeProbs{T}) where T = write(io, n.name)
 NewickTree.name(n::NodeProbs) = n.name
 NewickTree.distance(n::NodeProbs) = n.t
@@ -51,20 +51,59 @@ iswgt(n) = name(n) == "wgt"
 iswgdafter(n) = name(n) == "wgdafter"
 iswgtafter(n) = name(n) == "wgtafter"
 
+"""
+    PhyloBDP(ratesmodel, tree, bound)
+
+The phylogenetic birth-death process model as defined by Csuros &
+Miklos (2009). The bound is exactly defined by the data under
+consideration.
+"""
+struct PhyloBDP{T,M,I}
+    rates::M
+    nodes::Dict{I,ModelNode{T,I}}  # stored in postorder, redundant
+    order::Vector{ModelNode{T,I}}
+end
+
+function PhyloBDP(rates::RatesModel{T}, node::Node, m::Int) where T<:Real
+    function walk(x, y)
+        y′ = isroot(x) ?
+            Node(id(x), NodeProbs(x, m, T)) :
+            Node(id(x), NodeProbs(x, m, T), y)
+        for c in children(x) walk(c, y′) end
+        return y′
+    end
+    n = walk(node, nothing)
+    order = postwalk(n)
+    model = PhyloBDP(rates, Dict(id(n)=>n for n in order), order)
+    setmodel!(model)
+    return model
+end
+
+function setmodel!(model)
+    @unpack order, rates = model
+    for n in order
+        setϵ!(n, rates)
+        setW!(n, rates)
+    end
+end
+
+Base.getindex(m::PhyloBDP, i) = m.nodes[i]
+Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n$(m.rates))")
+
 # NOTE that this does not involve the gain model!
-function setϵ!(n::ModelNode{T}, θ::M) where {T,M<:RatesModel}
+function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:RatesModel}
     isleaf(n) && return  # XXX or should we set ϵ to 0.? [it should always be]
-    x = getrates(θ, n)
+    θ = getθ(rates, n)
     if iswgd(n) || iswgt(n)
         c = first(children(n))
         ϵc = getϵ(c, 2)
-        ϵn = iswgd(n) ? wgdϵ(x.q, ϵc) : wgtϵ(x.q, ϵc)
+        ϵn = iswgd(n) ? wgdϵ(θ.q, ϵc) : wgtϵ(θ.q, ϵc)
         setϵ!(c, 1, ϵn)
         setϵ!(n, 2, ϵn)
     else
         setϵ!(n, 2, one(T))
         for c in children(n)
-            ϵc = approx1(extp(x.λ, x.μ, distance(c), getϵ(c, 2)))
+            ϵc = approx1(extp(θ.λ, θ.μ, distance(c), getϵ(c, 2)))
             setϵ!(c, 1, ϵc)
             setϵ!(n, 2, getϵ(n, 2) * ϵc)
         end
@@ -80,7 +119,7 @@ wgtϵ(q, ϵ) = q*ϵ^3 + 2q*(one(q) - q)*ϵ^2 + (one(q) - q)^2*ϵ
 function setW!(n::ModelNode{T}, rates::M) where {T,M<:RatesModel}
     isroot(n) && return
     ϵ = getϵ(n, 2)
-    θ = getrates(rates, n)
+    θ = getθ(rates, n)
     if iswgdafter(n)
         wstar_wgd!(n.data.W, distance(n), θ, ϵ)
     elseif iswgtafter(n)
@@ -150,8 +189,7 @@ extp(λ, μ, t, ϵ) = λ ≈ μ ?
     one(ϵ) + (one(ϵ) - ϵ)/(μ * (ϵ - one(ϵ)) * t - one(ϵ)) :
     approx1((μ+(λ-μ)/(one(ϵ)+exp((λ-μ)*t)*λ*(ϵ-one(ϵ))/(μ-λ*ϵ)))/λ)
 
-# NOTE: possible optimizations: (1) matrix operations instead of some loops
-# (not likely to improve speed?)
+# This is the 'classical' implementation, operating on a single (extended) profile NOTE: possible optimizations: (1) matrix operations instead of some loops (not likely to improve speed?)
 @inline function cm!(
         L::Matrix{T},
         x::Vector{Int64},
@@ -224,11 +262,9 @@ end
 # NOTE: not to be used when analyzing multiple profiles! (setϵ and setW should
 # be invoked only once per set of parameters.)
 function compute_conditionals!(L, x, m)
-    for n in m.nodes
+    for n in m.order
         setϵ!(n, m.rates)
         setW!(n, m.rates)
         cm!(L, x, n)
     end
 end
-
-getrates(m::ConstantDLG, node) = m
