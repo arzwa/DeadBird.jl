@@ -95,20 +95,55 @@ end
 # f(rand(2))
 # gradient(x->f(x), rand(2))
 
-using ForwardDiff
-f = getgradclosure(dag, m)
-f(rand(2))
-@show ForwardDiff.gradient(f, exp.(randn(2)))
-
+using ForwardDiff, Optim
 # X, s = readdlm("example/9dicots-f01-1000.csv", ',', Int, header=true)
-X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
+X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
-dag  = CountDAG(X, s, tree)
-mmax = maximum([n.bound for n in dag.ndata])
+dag, bound = CountDAG(X, s, tree)
 
-r = ConstantDLG(λ=1.0, μ=1.2, κ=0.0 , η=0.9)
-m = PhyloBDP(r, tree, mmax+1)
-f = getgradclosure(dag, m)
+r = RatesModel(ConstantDLG(λ=1.0, μ=1.2, κ=0.0 , η=1/mean(X)), fixed=(:η, :κ))
+m = PhyloBDP(r, tree, bound)
+loglikelihood!(dag, m)
 
-using Optim
-optimize(f, randn(4))
+problem = mle_problem(dag, m)
+out = optimize(problem.f, problem.∇f, randn(2), BFGS())
+m.rates.trans(out.minimizer)
+
+nnodes = length(postwalk(tree))
+r = RatesModel(DLG(λ=rand(nnodes), μ=rand(nnodes)), fixed=(:η, :κ))
+m = PhyloBDP(r, tree, bound)
+problem = mle_problem(dag, m)
+out = optimize(problem.f, problem.∇f, randn(34), BFGS())
+@info out
+@show m.rates.trans(out.minimizer)
+
+
+# HMC
+using DynamicHMC, LogDensityProblems, Random, DynamicHMC.Diagnostics
+
+# I actually don't mind having it like this, we subtype on problem, and code
+# the prior in (::subproblem)(θ) function. We can code some logpdf functions
+# for phylogenetic priors separately as building blocks.
+struct ConstantDLGProblem <: Problem
+    model
+    data
+end
+
+function (p::ConstantDLGProblem)(θ)
+    @unpack λ, μ, η, κ = θ
+    ℓ = loglikelihood(p, θ)
+    π = logpdf(MvLogNormal(ones(2)), [λ, μ]) +
+         logpdf(Exponential(0.1), κ) +
+         logpdf(Beta(1,3), η)
+    return ℓ + π
+end
+
+r = RatesModel(ConstantDLG(λ=1.0, μ=1.2, κ=0.01 , η=1/mean(X)))
+m = PhyloBDP(r, tree, bound)
+p = ConstantDLGProblem(m, dag)
+t = trans(p)
+P = TransformedLogDensity(t, p)
+∇P = ADgradient(:ForwardDiff, P);
+results = mcmc_with_warmup(Random.GLOBAL_RNG, ∇P, 100);
+posterior = transform.(t, results.chain)
+@info summarize_tree_statistics(results.tree_statistics)

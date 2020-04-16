@@ -1,37 +1,4 @@
-# The RatesModel interface implements two functions: getθ(ratesmodel, node) to obtain the parameters associated with a node in the model and the function (::ratesmodel)(params) to obtain a new properly typed model object from a pre-existing one with new parameters
-
-# As in the Whale implementation, we would also want a transformation to be defined. That would define all necessary interfacing for doing optimization and NUTS?
-
-# IDEA: define a WGD model as a wrapper around a RatesModel.
-
-# XXX: think about how we could efficiently 'fix' parameters.
-
-abstract type RatesModel{T} end
-
-"""
-    ConstantDLG{T}
-
-Simple constant rates duplication-loss and gain model. All nodes of
-the tree are associated with the same parameters (duplication rate λ,
-loss rate μ, gain rate κ). This assumes a shifted geometric distribution
-on the family size at the root with mean 1/η.
-"""
-@with_kw struct ConstantDLG{T} <: Params{T}
-    λ::T
-    μ::T
-    κ::T = 0.
-    η::T = 0.66
-end
-
-getθ(m::ConstantDLG, node) = m
-trans(::ConstantDLG) = as((λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀))
-(::ConstantDLG)(θ) = ConstantDLG(promote(θ...)...)
-
-function Base.rand(m::M) where M<:RatesModel
-    t = trans(m)
-    M(;t(randn(dimension(t)))...)
-end
-
+# hate the name, but'it's barely used (the name that is)
 struct NodeProbs{T}
     name::String  # leaf name/wgd/wgt ...
     t::Float64    # usually distances have a fixed type
@@ -62,6 +29,7 @@ struct PhyloBDP{T,M,I}
     rates::M
     nodes::Dict{I,ModelNode{T,I}}  # stored in postorder, redundant
     order::Vector{ModelNode{T,I}}
+    bound::Int
 end
 
 function PhyloBDP(rates::RatesModel{T}, node::Node, m::Int) where T<:Real
@@ -74,8 +42,8 @@ function PhyloBDP(rates::RatesModel{T}, node::Node, m::Int) where T<:Real
     end
     n = walk(node, nothing)
     order = postwalk(n)
-    model = PhyloBDP(rates, Dict(id(n)=>n for n in order), order)
-    setmodel!(model)
+    model = PhyloBDP(rates, Dict(id(n)=>n for n in order), order, m)
+    setmodel!(model)  # assume the model should be initialized
     return model
 end
 
@@ -140,9 +108,9 @@ function wstar!(w, t, θ, ϵ)  # compute w* (Csuros Miklos 2009)
     ϕ = getϕ(t, λ, μ)  # p
     ψ = getψ(t, λ, μ)  # q
     _n = one(ψ) - ψ*ϵ
-    ϕp = approx1((ϕ*(one(ϵ) - ϵ) + (one(ψ) - ψ)*ϵ) / _n)
-    ψp = approx1(ψ*(one(ϵ) - ϵ) / _n)
-    κ > zero(κ) ? # gain model
+    ϕp = probify((ϕ*(one(ϵ) - ϵ) + (one(ψ) - ψ)*ϵ) / _n)
+    ψp = probify(ψ*(one(ϵ) - ϵ) / _n)
+    κ/λ > zero(κ) && one(ψp) - ψp > zero(ψp) ? # gain model
         w[1,:] = pdf.(NegativeBinomial(κ/λ, one(ψp) - ψp), 0:l) :
         w[1,1] = one(ψ)
     for m=1:l, n=1:m
@@ -188,64 +156,6 @@ getψ(t, λ, μ) = λ ≈ μ ?
 extp(λ, μ, t, ϵ) = λ ≈ μ ?
     one(ϵ) + (one(ϵ) - ϵ)/(μ * (ϵ - one(ϵ)) * t - one(ϵ)) :
     approx1((μ+(λ-μ)/(one(ϵ)+exp((λ-μ)*t)*λ*(ϵ-one(ϵ))/(μ-λ*ϵ)))/λ)
-
-# This is the 'classical' implementation, operating on a single (extended) profile NOTE: possible optimizations: (1) matrix operations instead of some loops (not likely to improve speed?)
-@inline function cm!(
-        L::Matrix{T},
-        x::Vector{Int64},
-        n::ModelNode{T}) where T<:Real
-    # @unpack W, ϵ = n.data
-    xmax = maximum(x)
-    if isleaf(n)
-        L[x[id(n)]+1, id(n)] = 0.
-    else
-        kids = children(n)
-        cmax = [x[id(c)] for c in kids]
-        ccum = cumsum([0 ; cmax])
-        ϵcum = cumprod([1.; [getϵ(c, 1) for c in kids]])
-        # XXX possible numerical issues with ϵcum?
-        B = fill(-Inf, (xmax+1, ccum[end]+1, length(cmax)))
-        A = fill(-Inf, (ccum[end]+1, length(cmax)))
-        for i = 1:length(cmax)
-            c  = kids[i]
-            mi = cmax[i]
-            Wc = c.data.W[1:xmax+1, 1:xmax+1]
-            @inbounds B[:, 1, i] = log.(Wc * exp.(L[1:xmax+1, id(c)]))
-            ϵ₁ = log(getϵ(c, 1))
-            for t=1:ccum[i], s=0:mi  # this is 0...M[i-1] & 0...mi
-                @inbounds B[s+1,t+1,i] = s == mi ?
-                    B[s+1,t,i] + ϵ₁ : logaddexp(B[s+2,t,i], ϵ₁+B[s+1,t,i])
-            end
-            if i == 1
-                l1me = log(one(ϵ₁) - ϵcum[2])
-                for n=0:ccum[i+1]  # this is 0 ... M[i]
-                    @inbounds A[n+1,i] = B[n+1,1,i] - n*l1me
-                end
-            else
-                # XXX is this loop as efficient as it could? I guess not...
-                p = probify(ϵcum[i])
-                for n=0:ccum[i+1], t=0:ccum[i]
-                    s = n-t
-                    (s < 0 || s > mi) && continue
-                    @inbounds lp = binomlogpdf(n, p, s) +
-                        A[t+1,i-1] + B[s+1,t+1,i]
-                    @inbounds A[n+1,i] = logaddexp(A[n+1,i], lp)
-                end
-                l1me = log(one(ϵ₁) - ϵcum[i+1])
-                for n=0:ccum[i+1]  # this is 0 ... M[i]
-                    @inbounds A[n+1,i] -= n*l1me
-                end
-            end
-        end
-        # @show A[:,end]
-        # if not filling in a matrix, A[:,end] should be the output vector I
-        # guess. The length of this vector would simultaneously specify the
-        # maximum bound for the node
-        for i=0:x[id(n)]
-            @inbounds L[i+1, id(n)] = A[i+1,end]
-        end
-    end
-end
 
 function probify(p)
     return if p > one(p)

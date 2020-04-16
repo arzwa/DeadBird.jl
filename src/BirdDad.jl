@@ -7,8 +7,13 @@ using Distributions
 using LightGraphs
 using StatsBase
 using StatsFuns
+using TransformVariables
+import StatsBase: loglikelihood
 
-include(joinpath(@__DIR__, "model.jl"))
+include("rates.jl")
+include("model.jl")
+include("countdag.jl")
+include("inference.jl")
 
 
 end # module

@@ -26,7 +26,8 @@ profile for an (assumed known) species tree.
     CountDAG(matrix, header, tree::Node)
 
 Build the gene count DAG from `matrix` with a `header` corresponding
-to leaf names of `tree`.
+to leaf names of `tree`. Returns the bound as well (for the PhyloBDP
+model constructor).
 """
 struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
     graph ::SimpleDiGraph{G}  # the DAG, with vertices ordered in a post-order
@@ -41,7 +42,7 @@ Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
 # The copy function is important for AD applications. It's quite cheap when using similar.
 copydag(g, T) = CountDAG(g.graph, g.ndata, similar(g.parts, Vector{T}))
 
-# constructor
+# constructor, returns the bound as well (for the PhyloBDP model constructor)
 function CountDAG(matrix::Matrix, names, tree)
     colindex = Dict(s=>i for (i,s) in enumerate(names))
     dag = SimpleDiGraph()
@@ -59,7 +60,8 @@ function CountDAG(matrix::Matrix, names, tree)
         return y
     end
     walk(tree)
-    CountDAG(dag, ndata, parts)
+    bound = maximum([n.bound for n in ndata])+1
+    (dag=CountDAG(dag, ndata, parts), bound=bound)
 end
 
 # We might want to implement a dedicated DAG builder for single gene families, in a way that we can use the same functions for computing the likelihood etc. when we do not want to lump all the data together (because of different model parameters for different families).
@@ -109,8 +111,8 @@ end
 
 function acclogpdf(dag, model)
     @unpack graph, ndata, parts = dag
-    η = model.rates.η
-    ϵ = log(getϵ(model[1], 2))
+    @unpack η = getθ(model.rates, model[1])
+    ϵ = log(probify(getϵ(model[1], 2)))
     ℓ = 0.
     for n in outneighbors(graph, nv(graph))
         ℓ += ndata[n].count*∫rootgeom(parts[n], η, ϵ)
@@ -137,7 +139,8 @@ end
 
 # This is the non-extinction in both clades stemming from the root condition
 function condition(model)
-    lη = log(model.rates.η)
+    @unpack η = getθ(model.rates, model[1])
+    lη = log(η)
     cf = zero(lη)
     for c in children(model[1])
         ϵ = geomϵp(log(getϵ(c, 1)), lη)
@@ -190,7 +193,7 @@ computed and available.
                 B[s+1,t,i] + ϵ₁ : logaddexp(B[s+2,t,i], ϵ₁+B[s+1,t,i])
         end
         if i == 1
-            l1me = log(one(ϵ₁) - ϵcum[2])
+            l1me = log(probify(one(ϵ₁) - ϵcum[2]))
             for n=0:kcum[i+1]  # this is 0 ... M[i]
                 A[n+1,i] = B[n+1,1,i] - n*l1me
             end
@@ -203,27 +206,11 @@ computed and available.
                 lp = binomlogpdf(n, p, s) + A[t+1,i-1] + B[s+1,t+1,i]
                 A[n+1,i] = logaddexp(A[n+1,i], lp)
             end
-            l1me = log(one(ϵ₁) - ϵcum[i+1])
+            l1me = log(probify(one(ϵ₁) - ϵcum[i+1]))
             for n=0:kcum[i+1]  # this is 0 ... M[i]
                 A[n+1,i] -= n*l1me
             end
         end
         parts[n] = A[:,end]
     end
-end
-
-# AD related
-# for ConstantDLG with fixed η and κ
-function getgradclosure(dag, model)
-    t = trans(model.rates)
-    η = model.rates.η
-    κ = model.ratex.κ
-    function f(x::Vector{T}) where T<:Real
-        θ = t([x ; randn(2)])
-        rates = model.rates(λ=θ[1], μ=θ[2], κ=κ, η=η)
-        m = PhyloBDP(rates, model.order[end],size(model.order[1].data.W)[1])
-        d = copydag(dag, T)
-        loglikelihood!(d, m)
-    end
-    return f
 end
