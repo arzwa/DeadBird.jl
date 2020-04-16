@@ -97,16 +97,16 @@ end
 
 using ForwardDiff, Optim
 # X, s = readdlm("example/9dicots-f01-1000.csv", ',', Int, header=true)
-X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
+X, s = readdlm("example/9dicots-f01-1000.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
 dag, bound = CountDAG(X, s, tree)
 
-r = RatesModel(ConstantDLG(λ=1.0, μ=1.2, κ=0.0 , η=1/mean(X)), fixed=(:η, :κ))
+r = RatesModel(ConstantDLG(λ=1.0, μ=1.0, κ=0.0 , η=1/1.5), fixed=(:η, :κ))
 m = PhyloBDP(r, tree, bound)
 loglikelihood!(dag, m)
 
 problem = mle_problem(dag, m)
-out = optimize(problem.f, problem.∇f, randn(2), BFGS())
+@time out = optimize(problem.f, problem.∇f, randn(2), BFGS())
 m.rates.trans(out.minimizer)
 
 nnodes = length(postwalk(tree))

@@ -48,13 +48,10 @@ on the family size at the root with mean 1/η.
     μ::T
     κ::T = 0.
     η::T = 0.66
-    # α::T = 1.
-    # K::Int = 1
 end
 
 getθ(m::ConstantDLG, node) = m
 trans(::ConstantDLG) = (λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀)
-# trans(::ConstantDLG) = (λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀, α=asℝ₊)
 # the zip is a bit slow...
 (::ConstantDLG)(θ) = ConstantDLG(; zip(keys(θ), promote(θ...))...)
 

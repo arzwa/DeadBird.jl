@@ -16,7 +16,6 @@ function mle_problem(dag, model)
     return (f=f, ∇f=(G, x) -> G .= ForwardDiff.gradient(f, x))
 end
 
-
 abstract type Problem end
 
 function loglikelihood(p::Problem, θ)
