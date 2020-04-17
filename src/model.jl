@@ -24,13 +24,22 @@ iswgtafter(n) = name(n) == "wgtafter"
 The phylogenetic birth-death process model as defined by Csuros &
 Miklos (2009). The bound is exactly defined by the data under
 consideration.
+
+!!! note: implemented as a `<: DiscreteMultivariateDistribution`
+    (for convenience with Turing.jl), however does not support
+    a lot of the Distributions.jl interface.
 """
-struct PhyloBDP{T,M,I}
+struct PhyloBDP{T,M,I} <: DiscreteMultivariateDistribution
     rates::M
     nodes::Dict{I,ModelNode{T,I}}  # stored in postorder, redundant
     order::Vector{ModelNode{T,I}}
     bound::Int
 end
+
+Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T =
+    loglikelihood!(copydag(x, T), m)
+
+(m::PhyloBDP)(θ) = PhyloBDP(m.rates(θ), m.order[end], m.bound)
 
 function PhyloBDP(rates::RatesModel{T}, node::Node, m::Int) where T<:Real
     function walk(x, y)
@@ -61,21 +70,21 @@ Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n$(m.rates))")
 # NOTE that this does not involve the gain model!
 function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:RatesModel}
     isleaf(n) && return  # XXX or should we set ϵ to 0.? [it should always be]
-    θ = getθ(rates, n)
+    θn = getθ(rates, n)
     if iswgd(n) || iswgt(n)
         c = first(children(n))
         ϵc = getϵ(c, 2)
-        ϵn = iswgd(n) ? wgdϵ(θ.q, ϵc) : wgtϵ(θ.q, ϵc)
+        ϵn = iswgd(n) ? wgdϵ(θn.q, ϵc) : wgtϵ(θn.q, ϵc)
         setϵ!(c, 1, ϵn)
         setϵ!(n, 2, ϵn)
     else
         setϵ!(n, 2, one(T))
         for c in children(n)
-            ϵc = approx1(extp(θ.λ, θ.μ, distance(c), getϵ(c, 2)))
+            θc = getθ(rates, c)
+            ϵc = extp(θc.λ, θc.μ, distance(c), getϵ(c, 2))
             setϵ!(c, 1, ϵc)
-            setϵ!(n, 2, getϵ(n, 2) * ϵc)
+            setϵ!(n, 2, probify(getϵ(n, 2) * ϵc))
         end
-        setϵ!(n, 2, approx1(getϵ(n, 2)))
     end
 end
 
@@ -101,7 +110,6 @@ function setW!(n::ModelNode{T}, rates::M) where {T,M<:RatesModel}
     # that is anyway the case also if we don't employ the CM algorithm)
 end
 
-# adapt for gain... + where can we use matrix expressions?
 function wstar!(w, t, θ, ϵ)  # compute w* (Csuros Miklos 2009)
     @unpack λ, μ, κ = θ
     l = size(w)[1]-1
@@ -144,18 +152,19 @@ function wstar_wgt!(w, t, θ, ϵ)
     end
 end
 
+const ΛMTOL = 1e-6
 approx1(x) = x ≈ one(x) ? one(x) : x
 approx0(x) = x ≈ zero(x) ? zero(x) : x
 
-getϕ(t, λ, μ) = λ ≈ μ ?
-    λ*t/(one(λ) + λ*t) :
-    μ*(exp(t*(λ-μ))-one(λ))/(λ*exp(t*(λ-μ))-μ)
-getψ(t, λ, μ) = λ ≈ μ ?
-    λ*t/(one(λ) + λ*t) :
-    (λ/μ)*getϕ(t, λ, μ)
-extp(λ, μ, t, ϵ) = λ ≈ μ ?
-    one(ϵ) + (one(ϵ) - ϵ)/(μ * (ϵ - one(ϵ)) * t - one(ϵ)) :
-    approx1((μ+(λ-μ)/(one(ϵ)+exp((λ-μ)*t)*λ*(ϵ-one(ϵ))/(μ-λ*ϵ)))/λ)
+getϕ(t, λ, μ) = isapprox(λ, μ, atol=ΛMTOL) ?
+    probify(λ*t/(one(λ) + λ*t)) :
+    probify(μ*(exp(t*(λ-μ))-one(λ))/(λ*exp(t*(λ-μ))-μ))
+getψ(t, λ, μ) = isapprox(λ, μ, atol=ΛMTOL) ?
+    probify(λ*t/(one(λ) + λ*t)) :
+    probify((λ/μ)*getϕ(t, λ, μ))
+extp(λ, μ, t, ϵ) = isapprox(λ, μ, atol=ΛMTOL) ?
+    probify(one(ϵ) + (one(ϵ) - ϵ)/(μ * (ϵ - one(ϵ)) * t - one(ϵ))) :
+    probify((μ+(λ-μ)/(one(ϵ)+exp((λ-μ)*t)*λ*(ϵ-one(ϵ))/(μ-λ*ϵ)))/λ)
 
 function probify(p)
     return if p > one(p)
@@ -178,3 +187,38 @@ function compute_conditionals!(L, x, m)
         cm!(L, x, n)
     end
 end
+
+"""
+    ∫rootgeometric(ℓ, η, ϵ)
+
+Integrate the loglikelihood at the root according to a shifted
+geometric prior with mean 1/η and log extinction probablity ϵ.
+Assumes at least one ancestral gene.
+"""
+@inline function ∫rootgeometric(ℓ, η, lϵ)
+    p = -Inf
+    for i in 2:length(ℓ)
+        f = (i-1)*log1mexp(lϵ) + log(η) + (i-2)*log(1. - η)
+        f -= i*log1mexp(log(1. - η)+lϵ)
+        p = logaddexp(p, ℓ[i] + f)
+    end
+    return p
+end
+
+# This is the non-extinction in both clades stemming from the root condition
+function rootcondition(model)
+    @unpack η = getθ(model.rates, model[1])
+    lη = log(η)
+    cf = zero(lη)
+    for c in children(model[1])
+        ϵ = geomϵp(log(getϵ(c, 1)), lη)
+        if ϵ > zero(lη)
+            @warn "Invalid probability at `condition`, returning -Inf" ϵ
+            return -Inf
+        end
+        cf += log1mexp(ϵ)
+    end
+    return cf
+end
+
+geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)

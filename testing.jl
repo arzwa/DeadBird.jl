@@ -39,7 +39,7 @@ using DelimitedFiles, NewickTree, Test, BenchmarkTools
 
 X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
-dag = builddag(X, s, tree)
+dag = CountDAG(X, s, tree)
 g = dag.graph
 @test outdegree(g, nv(g)) == length(unique(eachrow(X)))
 @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(X)[1]
@@ -55,15 +55,14 @@ g = dag.graph
 
 X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
-dag = builddag(X, s, tree)
+dag, bound = CountDAG(X, s, tree)
 g = dag.graph
 @test outdegree(g, nv(g)) == length(unique(eachrow(X)))
 @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(X)[1]
 
-mmax = maximum([n.bound for n in dag.ndata])
-r = ConstantDLG(λ=1.0, μ=1.2, κ=0.0 , η=0.9)
-m = PhyloBDP(r, tree, 24+1)
-@show likelihood!(dag, m)
+r = RatesModel(ConstantDLG(λ=0.1, μ=.12, κ=0.0, η=0.9))
+m = PhyloBDP(r, tree, bound)
+loglikelihood!(dag, m)
 @btime loglikelihood!(dag, m)
 
 for n in outneighbors(dag.graph, nv(dag.graph))
@@ -76,8 +75,14 @@ end
 # -251.0358357105553
 
 # Now I get:
-#   939.636 μs (3928 allocations: 380.89 KiB)
+# 939.636 μs (3928 allocations: 380.89 KiB)
 # But: -251.4429111574277
+
+# With the cm_inner function:
+# 933.633 μs (3851 allocations: 370.02 KiB)
+
+# Without boundschecking and with @inline
+# 924.669 μs (3851 allocations: 370.02 KiB)
 
 # (1000 gene families, 9 dicots)
 # julia> @btime logpdf!(model, data)

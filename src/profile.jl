@@ -1,4 +1,5 @@
 
+# I would prefer to share the cm routine with the DAG implementation
 # This is the 'classical' implementation, operating on a single (extended) profile NOTE: possible optimizations: (1) matrix operations instead of some loops (not likely to improve speed?)
 @inline function cm!(
         L::Matrix{T},

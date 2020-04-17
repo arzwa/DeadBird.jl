@@ -16,7 +16,7 @@ struct RatesModel{T,M<:Params{T},V}
 end
 
 Base.eltype(m::RatesModel{T}) where T = T
-RatesModel(θ; fixed=(:K,)) = RatesModel(θ, fixed, gettrans(θ, fixed))
+RatesModel(θ; fixed=()) = RatesModel(θ, fixed, gettrans(θ, fixed))
 Base.show(io::IO, m::RatesModel) = write(io,
     "RatesModel with $(m.fixed) fixed\n$(m.params)")
 getθ(m::RatesModel, node) = getθ(m.params, node)

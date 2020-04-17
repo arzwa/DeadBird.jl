@@ -21,7 +21,7 @@ abstract type Problem end
 function loglikelihood(p::Problem, θ)
     @unpack model, data = p
     params = model.rates(θ)
-    m = PhyloBDP(params, model.order[end], bound)
+    m = PhyloBDP(params, model.order[end], model.bound)
     d = copydag(data, eltype(params))
     loglikelihood!(d, m)
 end

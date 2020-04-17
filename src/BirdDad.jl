@@ -8,20 +8,21 @@ using LightGraphs
 using StatsBase
 using StatsFuns
 using TransformVariables
+using ForwardDiff
 import StatsBase: loglikelihood
 
 include("rates.jl")
-include("model.jl")
 include("countdag.jl")
+include("model.jl")
 include("inference.jl")
 
 # TODO:
 # - Discrete Gamma mixture
 # - Parallel computing for the DAG based approach
-# - Explore Turing-based inference
 # - Dirichlet process mixture
 # - Regression
 # - Get WGDs in this implementation
 # - Ordinary matrix based approach
+# - Ancestral states https://gitlab.psb.ugent.be/arzwa/beluga/blob/reversible-jump/src/_em.jl
 
 end # module
