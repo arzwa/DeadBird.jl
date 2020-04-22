@@ -1,0 +1,8 @@
+[deps]
+BirdDad = "a6db34b6-ea8f-496d-a49f-6ef7ed1dec48"
+Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
+DynamicHMC = "bbc10e6e-7c05-544b-b16e-64fede858acb"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
+TransformVariables = "84d833dd-6860-57f9-a1a7-6da5db126cff"
+Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"

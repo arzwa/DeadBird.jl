@@ -53,6 +53,7 @@ g = dag.graph
 @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(X)[1]
 # here we would go from 660 * 17 = 11220 to 1606
 
+using Test
 X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
 dag, bound = CountDAG(X, s, tree)

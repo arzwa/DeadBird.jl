@@ -1,6 +1,6 @@
 # BirdDad
 
-# This is a reimplementation of the core functionalities previousy implemented in the `Beluga` library.
+# This is a reimplementation of the core functionalities previously implemented in the `Beluga` library.
 
 # ## Maximum-likelihood estimation
 using BirdDad, Optim, NewickTree, DelimitedFiles, Distributions
@@ -100,7 +100,7 @@ chain = sample(model, NUTS(0.65), 1000);
 # This is a simple model to estimate the expected number of DL events per gene for each branch. This is similar to what is usually done for standard models in sequence-based phylogenetics, i.e. we estimate a distance instead of a rate. I use an uninformative exponential prior corresponding to a mean of 0.5 events per gene for any given branch. This uses the `DLG` (duplication-loss-gain model) with gain parameter κ fixed to 0.0
 
 # Read data
-X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
+X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
 
 # Set all branch lengths to 1
@@ -131,33 +131,40 @@ chain = sample(model, NUTS(0.65), 1000);
 @model branchrates(dag, model, ::Type{T}=Float64) where {T} = begin
     n = length(postwalk(model[1]))
     η ~ Beta(3,1)
+    ν ~ Exponential(0.1)
     λ = zeros(T, n)
     μ = zeros(T, n)
     for i=2:n
         λ[i] ~ Exponential(0.5)
-        μ[i] ~ LogNormal(log(λ[i]), 0.1)
+        μ[i] ~ LogNormal(log(λ[i]), ν)
     end
-    dag ~ model((λ=λ, μ=μ, η=η))
+    dag ~ model((λ=log.(λ), μ=log.(μ), η=η))
 end
 
 model = branchrates(dag, basemodel)
-chain = sample(model, NUTS(0.65), 1000);
+chain = sample(model, NUTS(0.65), 500);
 
 # ### An uncorrelated relaxed DL clock
 @model branchrates(dag, model, ::Type{T}=Matrix{Float64}) where {T} = begin
     n = length(postwalk(model[1]))
     η ~ Beta(3,1)
-    Σ ~ InverseWishart(3, [1. 0.9 ; 0.9 1.0])
+    Σ ~ InverseWishart(3, [1. 0. ; 0. 1.0])
     r = T(undef, 2, n)
-    r[:,1] = MvNormal(zeros(2), ones(2))
+    r[:,1] ~ MvNormal(zeros(2), ones(2))
     for i=2:n
         r[:,i] ~ MvNormal(r[:,1], Σ)
     end
     dag ~ model((λ=exp.(r[1,:]), μ=exp.(r[2,:]), η=η))
 end
 
+X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
+tree = readnw(readline("example/9dicots.nw"))
+dag, bound = CountDAG(X, s, tree)
+rates = RatesModel(DLG(λ=ones(n), μ=ones(n), κ=0.0, η=0.66), fixed=(:κ,))
+basemodel = PhyloBDP(rates, tree, bound)
+
 model = branchrates(dag, basemodel)
-chain = sample(model, NUTS(0.65), 1000);
+chain = sample(model, NUTS(0.65), 500);
 
 # ------------------------------------------------------------------------------
 using Literate

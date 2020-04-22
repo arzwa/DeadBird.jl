@@ -9,7 +9,8 @@ end
     CountDAG{T,G,I}
 
 The directed acyclic graph (DAG) representation of a phylogenetic
-profile for an (assumed known) species tree.
+profile for an (assumed known) species tree. This is a [multitree](
+https://en.wikipedia.org/wiki/Multitree)
 
     CountDAG(matrix, header, tree::Node)
 
@@ -19,6 +20,7 @@ model constructor).
 """
 struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
     graph ::SimpleDiGraph{G}  # the DAG, with vertices ordered in a post-order
+    levels::Vector{Vector{G}}
     ndata ::Vector{NodeData{I}}
     parts ::Vector{Vector{T}}
 end
@@ -28,7 +30,7 @@ Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
 # An alternative implementation would be to directly implement a DAGNode type with parents, children, the partial likelihood vector etc.
 
 # The copy function is important for AD applications. It's quite cheap when using `similar`.
-copydag(g, T) = CountDAG(g.graph, g.ndata, similar(g.parts, Vector{T}))
+copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata, similar(g.parts,Vector{T}))
 
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
 function CountDAG(matrix::Matrix, names, tree)
@@ -36,20 +38,23 @@ function CountDAG(matrix::Matrix, names, tree)
     dag = SimpleDiGraph()
     ndata = NodeData{typeof(id(tree))}[]
     parts = Vector{Float64}[]
-    function walk(n)
+    levels = Dict{Int,Vector{Int}}()
+    function walk(n, l)
         if isleaf(n)
             x = matrix[:,colindex[name(n)]]
             y = add_leaves!(dag, ndata, parts, x, id(n))
         else
-            x = zip([walk(c) for c in children(n)]...)
+            x = zip([walk(c, l+1) for c in children(n)]...)
             y = add_internal!(dag, ndata, parts, x, id(n))
             isroot(n) && add_root!(dag, ndata, y, id(n))
         end
+        haskey(levels, l) ? union!(levels[l], unique(y)) : levels[l] = unique(y)
         return y
     end
-    walk(tree)
+    walk(tree, 1)
     bound = maximum([n.bound for n in ndata])+1
-    (dag=CountDAG(dag, ndata, parts), bound=bound)
+    levels = collect(values(sort(levels, rev=true)))
+    (dag=CountDAG(dag, levels, ndata, parts), bound=bound)
 end
 
 # We might want to implement a dedicated DAG builder for single gene families, in a way that we can use the same functions for computing the likelihood etc. when we do not want to lump all the data together (because of different model parameters for different families).
@@ -62,7 +67,7 @@ function add_leaves!(dag, ndata, parts, x, n)  # x are leaf counts
         add_vertex!(dag)
         idmap[k] = nv(dag)
     end
-    [idmap[xᵢ] for xᵢ in x]
+    [idmap[xᵢ] for xᵢ in x]  # returns for each leaf count the corresponding node that was added to the graph
 end
 
 function add_internal!(dag, ndata, parts, x, n)  # x are tuples of DAG nodes
@@ -75,13 +80,16 @@ function add_internal!(dag, ndata, parts, x, n)  # x are tuples of DAG nodes
         for j in k add_edge!(dag, i, j) end
         idmap[k] = i
     end
-    [idmap[xᵢ] for xᵢ in x]
+    [idmap[xᵢ] for xᵢ in x]  # returns for each split the corresponding node that was added to the graph
 end
 
 function add_root!(dag, ndata, x, n)
     add_vertex!(dag); i = nv(dag)
     for j in unique(x) add_edge!(dag, i, j) end
 end
+
+Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T =
+    loglikelihood!(copydag(x, T), m)
 
 """
     loglikelihood!(dag::CountDAG, model::PhyloBDP)
@@ -90,11 +98,28 @@ Compute the log likelihood on the DAG using the Csuros & Miklos
 algorithm.
 """
 function loglikelihood!(dag, model)
-    for n in 1:nv(dag.graph)-1
-        cm!(dag, n, model)
+    # for n in 1:nv(dag.graph)-1 cm!(dag, n, model) end
+    for level in dag.levels  # parallelism possible within levels
+        Threads.@threads for n in level
+            cm!(dag, n, model)
+        end
     end
     ℓ = acclogpdf(dag, model) - rootcondition(model)
     isfinite(ℓ) ? ℓ : -Inf
+end
+# NOTE: I guess a distributed approach using SharedArray or DArray could be more efficient, but it's much less convenient (and not so compatible with AD?)
+
+function loglikelihood!(dag,
+        model::PhyloBDP{T,RatesModel{T,<:GammaMixture}}) where T
+    # TODO
+    # for n in 1:nv(dag.graph)-1 cm!(dag, n, model) end
+    # for level in dag.levels  # parallelism possible within levels
+    #     Threads.@threads for n in level
+    #         cm!(dag, n, model)
+    #     end
+    # end
+    # ℓ = acclogpdf(dag, model) - rootcondition(model)
+    # isfinite(ℓ) ? ℓ : -Inf
 end
 
 function acclogpdf(dag, model)

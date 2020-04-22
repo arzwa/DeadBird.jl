@@ -1,4 +1,5 @@
 module BirdDad
+# DeadBird, BirthdayDad, BirdHat, ...
 
 using NewickTree
 using Parameters
@@ -11,14 +12,13 @@ using TransformVariables
 using ForwardDiff
 import StatsBase: loglikelihood
 
-include("rates.jl")
-include("countdag.jl")
+include("rmodels.jl")
 include("model.jl")
+include("countdag.jl")
 include("inference.jl")
 
 # TODO:
 # - Discrete Gamma mixture
-# - Parallel computing for the DAG based approach
 # - Dirichlet process mixture
 # - Regression
 # - Get WGDs in this implementation

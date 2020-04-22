@@ -36,21 +36,19 @@ struct PhyloBDP{T,M,I} <: DiscreteMultivariateDistribution
     bound::Int
 end
 
-Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T =
-    loglikelihood!(copydag(x, T), m)
-
 (m::PhyloBDP)(θ) = PhyloBDP(m.rates(θ), m.order[end], m.bound)
 
-function PhyloBDP(rates::RatesModel{T}, node::Node, m::Int) where T<:Real
+function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int) where {T,I}
+    order = ModelNode{T,I}[]
     function walk(x, y)
         y′ = isroot(x) ?
             Node(id(x), NodeProbs(x, m, T)) :
             Node(id(x), NodeProbs(x, m, T), y)
         for c in children(x) walk(c, y′) end
+        push!(order, y′)
         return y′
     end
     n = walk(node, nothing)
-    order = postwalk(n)
     model = PhyloBDP(rates, Dict(id(n)=>n for n in order), order, m)
     setmodel!(model)  # assume the model should be initialized
     return model
