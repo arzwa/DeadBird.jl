@@ -8,8 +8,8 @@ a `CountDAG`.
 function mle_problem(dag, model)
     t = model.rates.trans
     function f(x::Vector{T}) where T<:Real
-        rates = model.rates(t(x))
-        m = PhyloBDP(rates, model.order[end], model.bound)
+        # rates = model.rates(t(x))
+        m = model(t(x))
         d = copydag(dag, T)
         -loglikelihood!(d, m)
     end

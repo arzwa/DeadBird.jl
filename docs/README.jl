@@ -3,28 +3,26 @@
 # This is a reimplementation of the core functionalities previously implemented in the `Beluga` library.
 
 # ## Maximum-likelihood estimation
-using BirdDad, Optim, NewickTree, DelimitedFiles, Distributions
-using ForwardDiff, TransformVariables
+using BirdDad, NewickTree, DelimitedFiles, Distributions
+using ForwardDiff, TransformVariables, Optim
 import BirdDad: CountDAG, ConstantDLG, PhyloBDP, mle_problem, RatesModel, DLG
 
 # Read in the data and tree
-X, s = readdlm("example/9dicots-f01-1000.csv", ',', Int, header=true)
+X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
 
 # Construct the data object
 dag, bound = CountDAG(X, s, tree)
 
 # Construct the model
-rates = RatesModel(
-    ConstantDLG(λ=1.0, μ=1.2, κ=0.0, η=1/mean(X)),
-    fixed=(:η, :κ))
-model = PhyloBDP(rates, tree, bound)
+rates = RatesModel(ConstantDLG(λ=5., μ=.1, κ=0.0, η=1/1.5),fixed=(:η, :κ))
+model = PhyloBDP(rates, tree, bound, cond=:nowhere)
 
 f, ∇f = mle_problem(dag, model)
 @time out = optimize(f, ∇f, randn(2), BFGS())
 t = transform(model.rates.trans, out.minimizer)
 
-# Note that this is an order of magnitude faster than the `R` implementation in WGDgc (where I measured a run time ≈35s for the same data and initial conditions). It is also *a lot* faster than CAFE (although CAFE seems to use multiple cores).
+# Note that this is an order of magnitude faster than the `R` implementation in WGDgc (where I measured a run time ≈35s for the same data and initial conditions). It is also *a lot* faster than CAFE (although CAFE seems to use multiple cores). The result is slightly different from WGDgc, so there might still be a tiny bug either in my iplementation or WGDgc, or its due to numerical issues.
 
 # ## Side note:
 # The Hessian of the negative loglikelihood evluated at the MLE is equal to the observed Fisher information $I(\hat{\theta})$. The estimated standard errors for the ML estimates $\mathrm{SE}(\hat{\theta}) = 1/\sqrt{I(\hat{\theta})}$ can be obtained as follows
@@ -95,6 +93,24 @@ chain = sample(model, NUTS(0.65), 1000);
 
 # Fun!
 
+@model constantrates(dag, model) = begin
+    r ~ MvLogNormal(ones(2))
+    η ~ Beta(3,1)
+    α ~ Exponential()
+    κ ~ Exponential(0.01)
+    dag ~ model((λ=r[1], μ=r[2], η=η, κ=κ, α=α))
+end
+
+X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
+tree = readnw(readline("example/9dicots.nw"))
+dag, bound = CountDAG(X, s, tree)
+r = RatesModel(GammaMixture(ConstantDLG(λ=1., μ=1., κ=0.01 , η=0.66), 4))
+m = PhyloBDP(r, tree, bound)
+model = constantrates(dag, m)
+chain = sample(model, NUTS(0.65), 1000);
+
+# There is an issue with quantiles from the Gamma!
+
 # ### Branch-wise exponential DL 'distances'
 
 # This is a simple model to estimate the expected number of DL events per gene for each branch. This is similar to what is usually done for standard models in sequence-based phylogenetics, i.e. we estimate a distance instead of a rate. I use an uninformative exponential prior corresponding to a mean of 0.5 events per gene for any given branch. This uses the `DLG` (duplication-loss-gain model) with gain parameter κ fixed to 0.0
@@ -109,7 +125,7 @@ n = length(postwalk(tree))
 
 # Process the data and construct model
 dag, bound = CountDAG(X, s, tree)
-rates = RatesModel(DLG(λ=ones(n), μ=ones(n), κ=0.0, η=0.66), fixed=(:κ,))
+rates = RatesModel(DLG(λ=ones(n), μ=ones(n), κ=0.0, η=1/mean(X)), fixed=(:κ,))
 basemodel = PhyloBDP(rates, tree, bound)
 
 # The Bayesian model

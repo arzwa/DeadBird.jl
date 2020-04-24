@@ -1,5 +1,10 @@
 # module RatesModels
 # using Parameters, TransformVariables
+# think think think, also make it a submodule
+# A gene family evolution mode always consists of:
+# 1. a model of DL rates across the tree (contant, local, branch-wise)
+# 2. a model of across faily variation (Gama mixture, DP mixture, ...)
+# 3. a prior for the root state
 
 abstract type Params{T} end
 
@@ -24,9 +29,11 @@ end
 
 (m::RatesModel)(x::Vector) = m(m.trans(x))
 function (m::RatesModel)(θ)
-    θ′ = merge(θ, [k=>getfield(m.params, k) for k in m.fixed])
+    θ′ = merge(θ, [k=>getparam(m.params, k) for k in m.fixed])
     RatesModel(m.params(θ′), m.fixed, m.trans)
 end
+
+getparam(m::Params, v) =  getfield(m, v)
 
 Base.rand(m::M) where M<:RatesModel = m(m.trans(randn(dimension(m.trans))))
 
@@ -49,10 +56,12 @@ end
 
 getθ(m::ConstantDLG, node) = m
 trans(::ConstantDLG) = (λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀)
+Base.:*(m::ConstantDLG, x::Real) = ConstantDLG(λ=m.λ*x, μ=m.μ*x, κ=m.κ, η=m.η)
 function (::ConstantDLG)(θ)
     t = promote_nt(θ)
     ConstantDLG(; λ=t.λ, μ=t.μ, κ=t.κ, η=t.η)
 end
+
 
 @with_kw struct ConstantDLGWGD{T} <: Params{T}
     λ::T
@@ -93,6 +102,7 @@ trans(m::DLG) = (
     μ=as(Array, asℝ, length(m.λ)),
     κ=asℝ₊, η=as𝕀)
 (::DLG)(θ) = DLG(; λ=θ.λ, μ=θ.μ, κ=eltype(θ.λ)(θ.κ), η=eltype(θ.λ)(θ.η))
+Base.:*(m::DLG, x::Real) = DLG(λ=m.λ.*x, μ=m.μ.*x, κ=m.κ, η=m.η)
 
 @with_kw struct DLGWGD{T} <: Params{T}
     λ::Vector{T}
@@ -127,19 +137,21 @@ DLWGD(; fixed=(:κ,), θ...) =
     RatesModel(DLGWGD(;θ...), fixed=mergetup(fixed, (:κ,)))
 mergetup(t1, t2) = tuple(union(t1, t2)...)
 
-# Mixture wrapper; a marginalized mixture is natural to iplement as a wrapper?
+# Mixture wrapper; a marginalized mixture is natural to implement as a wrapper?
 struct GammaMixture{M,T} <: Params{T}
     params::M
     rrates::Vector{T}
+    α::T
     function GammaMixture(m::M, K; α=1.0) where M<:Params{T} where T
         qs = quantile.(Gamma(α,one(α)/α), collect((0+(1/2K)):(1/K):1))
         qs .*= K/sum(qs)
-        new{M,T}(m, qs)
+        new{M,T}(m, qs, T(α))
     end
 end
 
 trans(m::GammaMixture) = merge(trans(m.params), (α=asℝ₊,))
 getθ(m::GammaMixture, node) = getθ(m.params, node)
 (m::GammaMixture)(θ) = GammaMixture(m.params(θ), length(m.rrates), α=θ.α)
+getparam(m::GammaMixture, v) = v != :α ? getparam(m.params, v) : m.α
 
 # end

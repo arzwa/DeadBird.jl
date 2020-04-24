@@ -23,6 +23,7 @@ struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
     levels::Vector{Vector{G}}
     ndata ::Vector{NodeData{I}}
     parts ::Vector{Vector{T}}
+    nfam  ::Int
 end
 
 Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
@@ -30,7 +31,8 @@ Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
 # An alternative implementation would be to directly implement a DAGNode type with parents, children, the partial likelihood vector etc.
 
 # The copy function is important for AD applications. It's quite cheap when using `similar`.
-copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata, similar(g.parts,Vector{T}))
+copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata,
+    similar(g.parts,Vector{T}), g.nfam)
 
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
 function CountDAG(matrix::Matrix, names, tree)
@@ -54,7 +56,8 @@ function CountDAG(matrix::Matrix, names, tree)
     walk(tree, 1)
     bound = maximum([n.bound for n in ndata])+1
     levels = collect(values(sort(levels, rev=true)))
-    (dag=CountDAG(dag, levels, ndata, parts), bound=bound)
+    (dag=CountDAG(dag, levels, ndata, parts, size(matrix)[1]),
+        bound=bound)
 end
 
 # We might want to implement a dedicated DAG builder for single gene families, in a way that we can use the same functions for computing the likelihood etc. when we do not want to lump all the data together (because of different model parameters for different families).
@@ -104,33 +107,50 @@ function loglikelihood!(dag, model)
             cm!(dag, n, model)
         end
     end
-    ℓ = acclogpdf(dag, model) - rootcondition(model)
+    ℓ = acclogpdf(dag, model) - dag.nfam*conditionfactor(model)
     isfinite(ℓ) ? ℓ : -Inf
 end
 # NOTE: I guess a distributed approach using SharedArray or DArray could be more efficient, but it's much less convenient (and not so compatible with AD?)
 
-function loglikelihood!(dag,
-        model::PhyloBDP{T,RatesModel{T,<:GammaMixture}}) where T
-    # TODO
-    # for n in 1:nv(dag.graph)-1 cm!(dag, n, model) end
-    # for level in dag.levels  # parallelism possible within levels
-    #     Threads.@threads for n in level
-    #         cm!(dag, n, model)
-    #     end
-    # end
-    # ℓ = acclogpdf(dag, model) - rootcondition(model)
-    # isfinite(ℓ) ? ℓ : -Inf
-end
-
 function acclogpdf(dag, model)
     @unpack graph, ndata, parts = dag
-    @unpack η = getθ(model.rates, model[1])
-    ϵ = log(probify(getϵ(model[1], 2)))
+    @unpack η = getθ(model.rates, root(model))
+    ϵ = log(probify(getϵ(root(model), 2)))
     ℓ = 0.
     for n in outneighbors(graph, nv(graph))
         ℓ += ndata[n].count*∫rootgeometric(parts[n], η, ϵ)
     end
     return ℓ
+end
+
+# implementation for a arginalized mixture model
+function loglikelihood!(dag, model::PhyloBDP{T,V}) where
+        {T,V<:RatesModel{T,<:GammaMixture}}
+    @unpack params, rrates = model.rates.params
+    @unpack graph, ndata = dag
+    nodes = outneighbors(graph, nv(graph))
+    K = length(rrates)
+    matrix = zeros(T, length(nodes),K)
+    for (i,rr) in enumerate(rrates)
+        setmodel!(model.order, params*rr)
+        for level in dag.levels  # parallelism possible within levels
+            Threads.@threads for n in level
+                cm!(dag, n, model)
+            end
+        end
+        matrix[:,i] .= sitepatterns_ℓ(dag, model, nodes)
+    end
+    ℓs = vec(logsumexp(matrix, dims=2)) .- log(K)
+    ℓ = sum([ndata[n].count*ℓs[i] for (i,n) in enumerate(nodes)]) -
+        dag.nfam*rootcondition(model)
+    isfinite(ℓ) ? ℓ : -Inf
+end
+
+function sitepatterns_ℓ(dag, model, nodes)
+    @unpack graph, ndata, parts = dag
+    @unpack η = getθ(model.rates, model[1])
+    ϵ = log(probify(getϵ(model[1], 2)))
+    [∫rootgeometric(parts[n], η, ϵ) for n in nodes]
 end
 
 """

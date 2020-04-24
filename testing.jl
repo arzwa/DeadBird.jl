@@ -56,7 +56,7 @@ g = dag.graph
 using Test
 X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
 tree = readnw(readline("example/9dicots.nw"))
-dag, bound = CountDAG(X, s, tree)
+dag, bound = BirdDad.CountDAG(X, s, tree)
 g = dag.graph
 @test outdegree(g, nv(g)) == length(unique(eachrow(X)))
 @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(X)[1]
@@ -153,3 +153,18 @@ P = TransformedLogDensity(t, p)
 results = mcmc_with_warmup(Random.GLOBAL_RNG, ∇P, 100);
 posterior = transform.(t, results.chain)
 @info summarize_tree_statistics(results.tree_statistics)
+
+import BirdDad: CountDAG, ConstantDLG, PhyloBDP, mle_problem, RatesModel, DLG
+import BirdDad: GammaMixture
+X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
+tree = readnw(readline("example/9dicots.nw"))
+n = length(postwalk(tree))
+
+dag, bound = BirdDad.CountDAG(X, s, tree)
+r = RatesModel(GammaMixture(DLG(λ=rand(n), μ=rand(n)), 4), fixed=(:η, :κ))
+m = PhyloBDP(r, tree, bound)
+@btime BirdDad.loglikelihood!(dag, m)
+
+r = RatesModel(DLG(λ=rand(n), μ=rand(n)), fixed=(:η, :κ))
+m = PhyloBDP(r, tree, bound)
+@btime BirdDad.loglikelihood!(dag, m)
