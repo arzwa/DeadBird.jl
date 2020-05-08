@@ -3,7 +3,7 @@
 # think think think, also make it a submodule
 # A gene family evolution mode always consists of:
 # 1. a model of DL rates across the tree (contant, local, branch-wise)
-# 2. a model of across faily variation (Gama mixture, DP mixture, ...)
+# 2. a model of across faily variation (Gamma mixture, DP mixture, ...)
 # 3. a prior for the root state
 
 abstract type Params{T} end

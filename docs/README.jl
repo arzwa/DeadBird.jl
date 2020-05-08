@@ -15,14 +15,14 @@ tree = readnw(readline("example/9dicots.nw"))
 dag, bound = CountDAG(X, s, tree)
 
 # Construct the model
-rates = RatesModel(ConstantDLG(λ=5., μ=.1, κ=0.0, η=1/1.5),fixed=(:η, :κ))
-model = PhyloBDP(rates, tree, bound, cond=:nowhere)
+rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0.0, η=1/1.5),fixed=(:η, :κ))
+model = PhyloBDP(rates, tree, bound)
 
 f, ∇f = mle_problem(dag, model)
 @time out = optimize(f, ∇f, randn(2), BFGS())
 t = transform(model.rates.trans, out.minimizer)
 
-# Note that this is an order of magnitude faster than the `R` implementation in WGDgc (where I measured a run time ≈35s for the same data and initial conditions). It is also *a lot* faster than CAFE (although CAFE seems to use multiple cores). The result is slightly different from WGDgc, so there might still be a tiny bug either in my iplementation or WGDgc, or its due to numerical issues.
+# Note that this is an order of magnitude faster than the `R` implementation in WGDgc (where I measured a run time ≈35s for the same data and initial conditions). It is also *a lot* faster than CAFE.
 
 # ## Side note:
 # The Hessian of the negative loglikelihood evluated at the MLE is equal to the observed Fisher information $I(\hat{\theta})$. The estimated standard errors for the ML estimates $\mathrm{SE}(\hat{\theta}) = 1/\sqrt{I(\hat{\theta})}$ can be obtained as follows

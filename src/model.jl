@@ -174,11 +174,12 @@ extp(λ, μ, t, ϵ=0.) = isapprox(λ, μ, atol=ΛMTOL) ?
 getξ(i, j, k, t, λ, μ) = _bin(i, k)*_bin(i+j-k-1,i-1)*
     getϕ(t, λ, μ)^(i-k)*getψ(t, λ, μ)^(j-k)*(1-getϕ(t, λ, μ)-getψ(t, λ, μ))^k
 tp(a, b, t, λ, μ) = (a == b == zero(a)) ? one(λ) :
-    probify(sum([getξ(a, b, k, t, λ, μ) for k=0:min(a,b)]))
+    probify2(sum([getξ(a, b, k, t, λ, μ) for k=0:min(a,b)]))
 logfact_stirling(n) = n*log(n) - n + log(2π*n)/2
 _bin(n, k) = n > 60 ?
     exp(logfact_stirling(n) - logfact_stirling(k) - logfact_stirling(n - k)) :
     binomial(n, k)
+probify2(p) = p > one(p) ? one(p) : p < zero(p) ? zero(p) : p
 
 # maybe make this a macro, so that we can show the function call?
 function probify(p)
@@ -238,64 +239,32 @@ end
 
 geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)
 
-# NOTE: experimental, will not work OOTB with WGDs. Also, will not work with gain model. Not sure whether it actually works... The values tend to make sense, but the algorithms seems to be numerically unstable...
-function extinctnowherecondition(model::PhyloBDP{T},
-        bound=2*model.bound) where T
-    # we compute the probability of extinction *somewhere* recursively
-    𝑃 = zeros(T, bound, length(model.order))
-    # 𝑃 stores the state probabilities (for nonextinct states!)
+# NOTE: experimental, will not work OOTB with WGDs. Also, will not work with gain model. All doabe though. First I was trying to compute the probability of extinction somewhere, but the probability of extinction nowhere turned out to be more easily calculated in a preorder, much like one would simulate from a CTMC time with finite state space. This is of course approximate!
+function extinctnowherecondition(m::PhyloBDP{T}, bound=m.bound*2) where T
+    𝑃 = zeros(T, bound, length(m.order))
+    p = one(T)
     function walk(n)
-        isleaf(n) && return 0.
-        _pvec!(𝑃, model, n) # TO DO
-        qs = zeros(T, length(children(n)))
-        ps = zeros(T, length(children(n)))
-        for (i,c) in enumerate(children(n))
-            @unpack λ, μ = getθ(model.rates, c)
-            qc = [extp(λ, μ, distance(c))^i for i=1:bound]
-            qs[i] = qc'*𝑃[:,id(n)]
-            ps[i] = walk(c) # recurse here
+        _pvec!(𝑃, m, n)
+        for c in children(n) walk(c) end
+        if isleaf(n)
+            p *= sum(𝑃[2:end, id(n)])
         end
-        # Now be careful to do inclusion/exclusion correctly when not binary
-        ps′ = [(1. - qs[i])*ps[i] for i=1:length(qs)]
-        p = inclusion_exclusion(qs) + inclusion_exclusion(ps′)
-        # return a probability
-        return p
+        return
     end
-    p = probify(walk(root(model)))
-    log(one(p) - p)
+    walk(root(m))
+    return log(probify(p))
 end
 
 function _pvec!(𝑃, model, n)
     if isroot(n)
         @unpack η = getθ(model.rates, n)
-        𝑃[:,id(n)] = pdf.(Geometric(η), 0:size(𝑃)[1]-1)
+        𝑃[:,id(n)] = [0. ; pdf.(Geometric(η), 0:size(𝑃)[1]-2)]
     else
         @unpack λ, μ = getθ(model.rates, n)
         t = distance(n)
         bound = size(𝑃)[1]
-        matrix = [tp(i, j, t, λ, μ) for i=1:bound, j=1:bound]
-        # matrix = hcat(eachrow(matrix) ./ eachrow(sum(matrix, dims=2))...)'
-        # XXX should we renormalize the matrix or not, no, the vecctor should
+        matrix = [tp(i, j, t, λ, μ) for i=0:bound-1, j=0:bound-1]
         p = matrix' * 𝑃[:,id(parent(n))]
         𝑃[:,id(n)] .= p /sum(p)
     end
-end
-
-function inclusion_exclusion(p)
-    s = sum(p)
-    for i=2:length(p), combo in eachcol(combinations(length(p), i))
-        s -= prod([p[j] for j in combo])
-    end
-    s
-end
-
-function combinations(n, r)
-    function walk(partial)
-        length(partial) == r && return partial
-        j = partial[end]+1
-        partials = [walk(vcat(partial, i)) for i=j:n]
-        return hcat([p for p in partials if length(p) > 0]...)
-    end
-    ps = [walk([i]) for i=1:n-r+1]
-    return hcat([p for p in ps if length(p)>0]...)
 end

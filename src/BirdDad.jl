@@ -21,7 +21,6 @@ include("inference.jl")
 # - Discrete Gamma mixture
 # - Dirichlet process mixture
 # - Regression
-# - Get WGDs in this implementation
 # - Ordinary matrix based approach
 # - Ancestral states https://gitlab.psb.ugent.be/arzwa/beluga/blob/reversible-jump/src/_em.jl
 

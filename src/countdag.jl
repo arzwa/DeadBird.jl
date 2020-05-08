@@ -123,7 +123,7 @@ function acclogpdf(dag, model)
     return ℓ
 end
 
-# implementation for a arginalized mixture model
+# implementation for a marginalized mixture model
 function loglikelihood!(dag, model::PhyloBDP{T,V}) where
         {T,V<:RatesModel{T,<:GammaMixture}}
     @unpack params, rrates = model.rates.params
