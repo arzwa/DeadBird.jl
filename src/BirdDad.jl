@@ -8,9 +8,11 @@ using Distributions
 using LightGraphs
 using StatsBase
 using StatsFuns
+using FakeFamily
 using TransformVariables
 using ForwardDiff
 import StatsBase: loglikelihood
+import FakeFamily: Params, RatesModel, getθ, trans
 
 include("rmodels.jl")
 include("model.jl")

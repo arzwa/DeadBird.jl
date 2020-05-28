@@ -1,44 +1,3 @@
-# module RatesModels
-# using Parameters, TransformVariables
-# think think think, also make it a submodule
-# A gene family evolution mode always consists of:
-# 1. a model of DL rates across the tree (contant, local, branch-wise)
-# 2. a model of across faily variation (Gamma mixture, DP mixture, ...)
-# 3. a prior for the root state
-
-abstract type Params{T} end
-
-struct RatesModel{T,M<:Params{T},V}
-    params::M
-    fixed ::Tuple
-    trans ::V
-end
-
-Base.eltype(m::RatesModel{T}) where T = T
-RatesModel(θ; fixed=()) = RatesModel(θ, fixed, gettrans(θ, fixed))
-Base.show(io::IO, m::RatesModel) = write(io,
-    "RatesModel with $(m.fixed) fixed\n$(m.params)")
-getθ(m::RatesModel, node) = getθ(m.params, node)
-
-# HACK: a little bit of metaprogramming to allow fixed parameters, necessary?
-function gettrans(p::P, fixed) where P<:Params
-    inner = join(["$k=$v," for (k,v) in pairs(trans(p)) if k ∉ fixed])
-    expr  = Meta.parse("as(($inner))")
-    eval(expr)
-end
-
-(m::RatesModel)(x::Vector) = m(m.trans(x))
-function (m::RatesModel)(θ)
-    θ′ = merge(θ, [k=>getparam(m.params, k) for k in m.fixed])
-    RatesModel(m.params(θ′), m.fixed, m.trans)
-end
-
-getparam(m::Params, v) =  getfield(m, v)
-
-Base.rand(m::M) where M<:RatesModel = m(m.trans(randn(dimension(m.trans))))
-
-promote_nt(nt) = (;zip(keys(nt), promote(nt...))...)
-
 """
     ConstantDLG{T}
 
@@ -54,6 +13,8 @@ on the family size at the root with mean 1/η.
     η::T = 0.66
 end
 
+promote_nt(nt) = (;zip(keys(nt), promote(nt...))...)
+
 getθ(m::ConstantDLG, node) = m
 trans(::ConstantDLG) = (λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀)
 Base.:*(m::ConstantDLG, x::Real) = ConstantDLG(λ=m.λ*x, μ=m.μ*x, κ=m.κ, η=m.η)
@@ -62,11 +23,10 @@ function (::ConstantDLG)(θ)
     ConstantDLG(; λ=t.λ, μ=t.μ, κ=t.κ, η=t.η)
 end
 
-
 @with_kw struct ConstantDLGWGD{T} <: Params{T}
     λ::T
     μ::T
-    q::Vector{T}
+    q::Vector{T} = Float64[]
     κ::T = 0.
     η::T = 0.66
 end
@@ -153,5 +113,3 @@ trans(m::GammaMixture) = merge(trans(m.params), (α=asℝ₊,))
 getθ(m::GammaMixture, node) = getθ(m.params, node)
 (m::GammaMixture)(θ) = GammaMixture(m.params(θ), length(m.rrates), α=θ.α)
 getparam(m::GammaMixture, v) = v != :α ? getparam(m.params, v) : m.α
-
-# end

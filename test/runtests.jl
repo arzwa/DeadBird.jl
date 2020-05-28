@@ -23,7 +23,7 @@ end
     ℓ = BirdDad.loglikelihood!(dag, m)
     @test isapprox(ℓ, -19.4707431557829, atol=1e-6)
     wgdgc = [-Inf, -13.032134, -10.290639, -8.968442, -8.413115,
-             -8.380409, -8.78481, -9.592097, -10.801585, -12.448171, 
+             -8.380409, -8.78481, -9.592097, -10.801585, -12.448171,
              -14.62676, -17.606982]
     for i=1:length(wgdgc)
         @test isapprox(dag.parts[end][i], wgdgc[i], atol=1e-6)
@@ -32,4 +32,17 @@ end
     @test isapprox(root.data.ϵ[2], 0.817669336686759, atol=1e-6)
     @show isapprox(root[1].data.ϵ[1], 0.938284827880156, atol=1e-6)
     @show isapprox(root[2].data.ϵ[1], 0.871451090746186, atol=1e-6)
+end
+
+@testset "ML for constant rates" begin
+    X, s = readdlm("example/9dicots-f01-1000.csv", ',', Int, header=true)
+    tree = readnw(readline("example/9dicots.nw"))
+    dag, bound = CountDAG(X, s, tree)
+    rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0.0, η=1/1.5),fixed=(:η, :κ))
+    model = PhyloBDP(rates, tree, bound)
+    f, ∇f = mle_problem(dag, model)
+    @time out = optimize(f, ∇f, randn(2), BFGS())
+    t = BirdDad.transform(model.rates.trans, out.minimizer)
+    @test t.λ ≈ 0.3406234009479288
+    @test t.μ ≈ 0.21780580678076594
 end

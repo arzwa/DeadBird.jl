@@ -35,6 +35,7 @@ copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata,
     similar(g.parts,Vector{T}), g.nfam)
 
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
+CountDAG(df, tree) = CountDAG(Matrix(df), names(df), tree)
 function CountDAG(matrix::Matrix, names, tree)
     colindex = Dict(s=>i for (i,s) in enumerate(names))
     dag = SimpleDiGraph()

@@ -13,8 +13,9 @@ NodeProbs(n, m::Int, T::Type) =
 Base.show(io::IO, n::NodeProbs{T}) where T = write(io, n.name)
 NewickTree.name(n::NodeProbs) = n.name
 NewickTree.distance(n::NodeProbs) = n.t
-iswgd(n) = name(n) == "wgd"
-iswgt(n) = name(n) == "wgt"
+iswgd(n) = startswith(name(n), "wgd")
+iswgt(n) = startswith(name(n), "wgt")
+wgdid(n) = iswgd(n) ? parse(Int64, split(name(n))[2]) : NaN
 iswgdafter(n) = name(n) == "wgdafter"
 iswgtafter(n) = name(n) == "wgtafter"
 
@@ -54,7 +55,7 @@ function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;
     return model
 end
 
-# these are two 'secondary constructors', i.e. they establish a model based on an already available modal structure and a new set of parameters. The first makes a copy, the second modifies the existing model.
+# these are two 'secondary constructors', i.e. they establish a model based on an already available model structure and a new set of parameters. The first makes a copy, the second modifies the existing model.
 (m::PhyloBDP)(θ) = PhyloBDP(m.rates(θ), m.order[end], m.bound, cond=m.cond)
 function update!(m::PhyloBDP, θ)
     m.rates = m.rates(θ)
@@ -72,6 +73,7 @@ end
 Base.getindex(m::PhyloBDP, i) = m.nodes[i]
 Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n~$(m.cond)\n$(m.rates))")
 root(m::PhyloBDP) = m.order[end]
+NewickTree.getroot(m::PhyloBDP) = root(m)
 
 # NOTE that this does not involve the gain model!
 function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:Union{RatesModel,Params}}
