@@ -1,3 +1,4 @@
+# Split this file in model.jl and linear.jl
 # hate the name, but'it's barely used (the name that is)
 struct NodeProbs{T}
     name::String  # leaf name/wgd/wgt ...
@@ -43,14 +44,14 @@ function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;
     order = ModelNode{T,I}[]
     function walk(x, y)
         y′ = isroot(x) ?
-            Node(id(x), NodeProbs(x, m, T)) :
-            Node(id(x), NodeProbs(x, m, T), y)
+            Node(id(x), NodeProbs(x, m+1, T)) :
+            Node(id(x), NodeProbs(x, m+1, T), y)
         for c in children(x) walk(c, y′) end
         push!(order, y′)
         return y′
     end
     n = walk(node, nothing)
-    model = PhyloBDP(rates, Dict(id(n)=>n for n in order), order, m, cond)
+    model = PhyloBDP(rates, Dict(id(n)=>n for n in order), order, m+1, cond)
     setmodel!(model)  # assume the model should be initialized
     return model
 end
@@ -103,13 +104,6 @@ getϵ(n, i::Int) = n.data.ϵ[i]
 setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
 wgdϵ(q, ϵ) = q*ϵ^2 + (one(q) - q)*ϵ
 wgtϵ(q, ϵ) = q*ϵ^3 + 2q*(one(q) - q)*ϵ^2 + (one(q) - q)^2*ϵ
-
-# non-linear models
-function setW!(n::ModelNode{T}, rates) where T
-    isroot(n) && return
-    Q = getQ(rates.params, n)
-    n.data.W .= exp(Q*distance(n))
-end
 
 # linear models (implementation detail technique)
 function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}

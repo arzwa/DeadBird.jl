@@ -65,9 +65,34 @@ end
     @test -Inf < logpdf(mixmodel, dag) < 0.
 end
 
-import BirdDad: ConstantDLSC
-X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
-tree = readnw(readline("example/9dicots.nw"))
-dag, bound = CountDAG(X, s, tree)
-rates = RatesModel(ConstantDLSC(λ=.1, μ=.1, η=1/1.5, m=bound-1))
-model = PhyloBDP(rates, tree, bound)
+@testset "Non-linear models, ConstantDLSC" begin
+    import BirdDad: ConstantDLSC
+    X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
+    tree = readnw(readline("example/9dicots.nw"))
+    dag, bound = CountDAG(X, s, tree)
+    rates = RatesModel(ConstantDLSC(λ=.1, μ=.1, μ₁=0.01, η=1/1.5, m=bound))
+    model = PhyloBDP(rates, tree, bound)
+
+    dag = BirdDad.nonlineardag(dag, bound)
+    ℓ1 = BirdDad.loglikelihood!(dag, model)
+
+    ps, bound = ProfileMatrix(X, s, tree)
+    ps = BirdDad.nonlinearprofile(ps, bound)
+    ℓ2 = BirdDad.loglikelihood!(ps, model)
+    @test ℓ1 ≈ ℓ2
+
+    for i=1:10
+        r = exp.(randn(2))
+        η = rand()
+        dag, bound = CountDAG(X, s, tree)
+        dag_ = BirdDad.nonlineardag(dag, 10bound)
+        rates = RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=10bound))
+        model = PhyloBDP(rates, tree, 10bound)
+        ℓ1 = BirdDad.loglikelihood!(dag_, model)
+
+        rates = RatesModel(ConstantDLG(λ=r[1], μ=r[2], κ=.0, η=η))
+        model = PhyloBDP(rates, tree, bound)
+        ℓ2 = BirdDad.loglikelihood!(dag, model)
+        @show ℓ1, ℓ2
+    end
+end

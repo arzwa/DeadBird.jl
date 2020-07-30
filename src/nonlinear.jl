@@ -51,13 +51,73 @@ function setratematrix!(p::ConstantDLSC)
     p.Q .= Matrix(BandedMatrix(-1=>μs, 1=>λs, 0=>ds))
 end
 
+# non-linear models
+function setW!(n::ModelNode{T}, rates) where T
+    isroot(n) && return
+    Q = getQ(rates.params, n)
+    n.data.W .= exp(Q*distance(n))
+end
 
-function loglikelihood!(dag::CountDAG, model::PhyloBDP{T}) where {T}
+# NOTE: for non-linear models the pgf formulation can't be used
+# (because ℙ{extinction} = F(0) is only valid for processes
+# with the branching property)
+# function setϵ!(n::ModelNode{T}, rates) where T
+#     isleaf(n) && return  # XXX or should we set ϵ to 0.? [it should always be]
+#     setϵ!(n, 2, one(T))
+#     for c in children(n)
+#         𝑃 = c.data.W
+#         ϵc = extp(θc.λ, θc.μ, distance(c), getϵ(c, 2))
+#         setϵ!(c, 1, ϵc)
+#         setϵ!(n, 2, probify(getϵ(n, 2) * ϵc))
+#     end
+#     # end
+# end
+
+function loglikelihood!(dag::CountDAG, model)
     for level in dag.levels  # parallelism possible within levels
-        Threads.@threads for n in level
+        # Threads.@threads for n in level
+        for n in level
+            LightGraphs.outdegree(dag.graph, n) == 0 && continue
             prune!(dag, n, model)
         end
     end
     ℓ = acclogpdf(dag, model) - dag.nfam*conditionfactor(model)
     isfinite(ℓ) ? ℓ : -Inf
+end
+
+@inline function prune!(dag::CountDAG{T}, n, model) where T
+    @unpack ndata, parts, graph = dag
+    parts[n] .= zero(T)
+    # loop over childnodes
+    for c in outneighbors(graph, n)
+        𝑃 = model[ndata[c].snode].data.W
+        parts[n] .+= log.(𝑃 * exp.(parts[c]))
+    end
+end
+
+# nonlinear models
+function loglikelihood!(p::Profile, model, condition=true)
+    @unpack η = getθ(model.rates, root(model))
+    ϵ = log(probify(getϵ(root(model), 2)))
+    for n in model.order
+        prune!(p, n, model)
+    end
+    ℓ = ∫rootgeometric(p.ℓ[1], η, ϵ)
+    if condition
+        ℓ -= conditionfactor(model)
+    end
+    isfinite(ℓ) ? ℓ : -Inf
+end
+
+@inline function prune!(p::Profile{T}, n, model) where T
+    @unpack x, ℓ = p
+    if isleaf(n)
+        ℓ[id(n)][x[id(n)]+1] = 0.
+        return
+    end
+    ℓ[id(n)] .= zero(T)
+    for c in children(n)
+        𝑃 = model[id(c)].data.W
+        ℓ[id(n)] .+= log.(𝑃 * exp.(ℓ[id(c)]))
+    end
 end

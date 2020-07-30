@@ -1,4 +1,4 @@
-# The profile (non-DAG) implementation, should be an abstract matrix
+# The profile (non-DAG) implementation
 struct Profile{T,I}
     x::Vector{I}
     ℓ::Vector{Vector{T}}
@@ -6,13 +6,16 @@ end
 Base.length(p::Profile) = length(p.x)
 Base.show(io::IO, p::Profile{T,I}) where {T,I} =
     write(io, "Profile{$T,$I}($(p.x), $(sum(p.ℓ[1])))")
-(p::Profile{T,I})(::Type{V}) where {T,I,V} = Profile(p.x, getparts(p.x, V))
+(p::Profile{T,I})(::Type{V}) where {T,I,V} = Profile(p.x, copyparts(p.ℓ, V))
+(p::Profile{T,I})(n, ::Type{V}=T) where {T,I,V} = Profile(p.x, getparts(p.x, n, V))
 
 struct ProfileMatrix{T,I} <: AbstractMatrix{Profile{T,I}}
     profiles::Vector{Profile{T,I}}
 end
-(p::ProfileMatrix)(::Type{T}) where T =
-    ProfileMatrix([p[i](T) for i=1:nfamilies(p)])
+(p::ProfileMatrix)(::Type{T}) where T = ProfileMatrix([p[i](T) for i=1:nfamilies(p)])
+(p::ProfileMatrix{T})(n, ::Type{V}=T) where {T,V} =
+    ProfileMatrix([p[i](n+1, V) for i=1:nfamilies(p)])
+nonlinearprofile(p, bound) = p(bound)
 
 ProfileMatrix(df, tree) = ProfileMatrix(Matrix(df), names(df), tree)
 function ProfileMatrix(matrix::Matrix, names, tree, T=Float64)
@@ -30,10 +33,12 @@ function ProfileMatrix(matrix::Matrix, names, tree, T=Float64)
         end
     end
     M = ProfileMatrix([Profile(profile[i,:], getparts(profile[i,:], T)) for i=1:N])
-    (matrix=M, bound=maximum(profile)+1)
+    (matrix=M, bound=maximum(profile))
 end
 
 getparts(x, T) = [fill(T(-Inf), y+1) for y in x]
+getparts(x, m, T) = [fill(T(-Inf), m) for y in x]
+copyparts(x, T) = [fill(T(-Inf), length(y)) for y in x]
 
 Base.getindex(P::ProfileMatrix, i) = P.profiles[i]
 Base.getindex(P::ProfileMatrix, i, j) = P.profiles[i].x[j]
@@ -62,7 +67,8 @@ nfamilies(P::ProfileMatrix) = size(P)[1]
     ℓ[id(n)] = A[:,end]
 end
 
-function loglikelihood!(p::Profile, model, condition=true)
+function loglikelihood!(p::Profile, model::PhyloBDP{T,V},
+        condition=true) where {T,V<:LinearModel}
     @unpack η = getθ(model.rates, root(model))
     ϵ = log(probify(getϵ(root(model), 2)))
     for n in model.order

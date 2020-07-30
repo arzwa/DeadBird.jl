@@ -22,7 +22,7 @@ include("profile.jl")
 include("dlsim.jl")
 include("ppsim.jl")
 
-include("truncmodel.jl")
+include("nonlinear.jl")
 
 export CountDAG, ProfileMatrix, Profile
 export ConstantDLG, DLG, RatesModel, PhyloBDP, GammaMixture

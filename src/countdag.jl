@@ -37,6 +37,20 @@ Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
 copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata,
     similar(g.parts, Vector{T}), g.nfam)
 
+# HACK, a proper constructor would be nicer...
+function nonlineardag(g::CountDAG, bound)
+    newparts = map(g.parts) do x
+        if x[end] == 0.
+            y = fill(-Inf, bound+1)
+            y[length(x)] = 0.
+        else
+            y = fill(NaN, bound+1)
+        end
+        y
+    end
+    CountDAG(g.graph, g.levels, g.ndata, newparts, g.nfam)
+end
+
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
 CountDAG(df, tree) = CountDAG(Matrix(df), names(df), tree)
 function CountDAG(matrix::Matrix, names, tree)
@@ -58,7 +72,7 @@ function CountDAG(matrix::Matrix, names, tree)
         return y
     end
     walk(tree, 1)
-    bound = maximum([n.bound for n in ndata])+1
+    bound = maximum([n.bound for n in ndata])
     levels = collect(values(sort(levels, rev=true)))
     cdag = CountDAG(dag, levels, ndata, parts, size(matrix)[1])
     (dag=cdag, bound=bound)
