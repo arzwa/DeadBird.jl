@@ -55,7 +55,10 @@ function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;
     return model
 end
 
-# these are two 'secondary constructors', i.e. they establish a model based on an already available model structure and a new set of parameters. The first makes a copy, the second modifies the existing model.
+# These are two 'secondary constructors',
+# i.e. they establish a model based on an already available model structure
+# and a new set of parameters.
+# The first makes a copy, the second modifies the existing model.
 (m::PhyloBDP)(θ) = PhyloBDP(m.rates(θ), m.order[end], m.bound, cond=m.cond)
 function update!(m::PhyloBDP, θ)
     m.rates = m.rates(θ)
@@ -101,7 +104,15 @@ setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
 wgdϵ(q, ϵ) = q*ϵ^2 + (one(q) - q)*ϵ
 wgtϵ(q, ϵ) = q*ϵ^3 + 2q*(one(q) - q)*ϵ^2 + (one(q) - q)^2*ϵ
 
-function setW!(n::ModelNode{T}, rates::M) where {T,M<:Union{RatesModel,Params}}
+# non-linear models
+function setW!(n::ModelNode{T}, rates) where T
+    isroot(n) && return
+    Q = getQ(rates.params, n)
+    n.data.W .= exp(Q*distance(n))
+end
+
+# linear models (implementation detail technique)
+function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
     isroot(n) && return
     ϵ = getϵ(n, 2)
     θ = getθ(rates, n)
@@ -118,7 +129,9 @@ function setW!(n::ModelNode{T}, rates::M) where {T,M<:Union{RatesModel,Params}}
     # that is anyway the case also if we don't employ the CM algorithm)
 end
 
-function wstar!(w, t, θ, ϵ)  # compute w* (Csuros Miklos 2009)
+Base.show(io::IO, x::ForwardDiff.Dual) = show(io, "dual$(x.value)")
+
+function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ
     l = size(w)[1]-1
     ϕ = getϕ(t, λ, μ)  # p
@@ -126,9 +139,9 @@ function wstar!(w, t, θ, ϵ)  # compute w* (Csuros Miklos 2009)
     _n = one(ψ) - ψ*ϵ
     ϕp = probify((ϕ*(one(ϵ) - ϵ) + (one(ψ) - ψ)*ϵ) / _n)
     ψp = probify(ψ*(one(ϵ) - ϵ) / _n)
-    κ/λ > zero(κ) && one(ψp) - ψp > zero(ψp) ? # gain model
+    (κ/λ > zero(κ)) && (one(ψp) - ψp > zero(ψp)) ? # gain model
         w[1,:] = pdf.(NegativeBinomial(κ/λ, one(ψp) - ψp), 0:l) :
-        w[1,1] = one(ψ)
+        w[1,1] = one(T)
     for m=1:l, n=1:m
         w[n+1, m+1] = ψp*w[n+1, m] + (one(ϕ) - ϕp)*(one(ψ) - ψp)*w[n, m]
     end
@@ -184,17 +197,33 @@ _bin(n, k) = n > 60 ?
 probify2(p) = p > one(p) ? one(p) : p < zero(p) ? zero(p) : p
 
 # maybe make this a macro, so that we can show the function call?
+const PTOL = 1e-9  # tolerance for probabilities
 function probify(p)
     return if p > one(p)
-        @warn "probability $p > 1, set to 1"
+        !(isapprox(p, one(p), atol=PTOL)) && @warn "probability $p > 1, set to 1"
         one(p)
     elseif p < zero(p)
-        @warn "probability $p < 0, set to 0"
+        !(isapprox(p, zero(p), atol=PTOL)) && @warn "probability $p < 0, set to 0"
         zero(p)
     else
         p
     end
 end
+
+# using InteractiveUtils
+# macro probify(p)
+#     msg = string(p)
+#     return :(if $p > one($p)
+#             @warn "ℙ > 1 ($($msg) = $($p))"
+#             one($p)
+#         elseif $p < zero($p)
+#             @warn "ℙ < 0 ($($msg) = $($p))"
+#             zero($p)
+#         else
+#             $p
+#         end)
+#     end
+# end
 
 """
     ∫rootgeometric(ℓ, η, ϵ)
@@ -213,7 +242,7 @@ Assumes at least one ancestral gene.
     return p
 end
 
-# We could work with tyes as well and use dispatch...
+# We could work with types as well and use dispatch...
 conditionfactor(model) =
     if model.cond == :root
         nonextinctfromrootcondition(model)
@@ -224,6 +253,7 @@ conditionfactor(model) =
 end
 
 # This is the non-extinction in both clades stemming from the root condition
+# XXX: assumes the geometric prior!
 function nonextinctfromrootcondition(model)
     @unpack η = getθ(model.rates, model[1])
     lη = log(η)
@@ -241,32 +271,33 @@ end
 
 geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)
 
-# NOTE: experimental, will not work OOTB with WGDs. Also, will not work with gain model. All doabe though. First I was trying to compute the probability of extinction somewhere, but the probability of extinction nowhere turned out to be more easily calculated in a preorder, much like one would simulate from a CTMC time with finite state space. This is of course approximate!
-function extinctnowherecondition(m::PhyloBDP{T}, bound=m.bound*2) where T
-    𝑃 = zeros(T, bound, length(m.order))
-    p = one(T)
-    function walk(n)
-        _pvec!(𝑃, m, n)
-        for c in children(n) walk(c) end
-        if isleaf(n)
-            p *= sum(𝑃[2:end, id(n)])
-        end
-        return
-    end
-    walk(root(m))
-    return log(probify(p))
-end
-
-function _pvec!(𝑃, model, n)
-    if isroot(n)
-        @unpack η = getθ(model.rates, n)
-        𝑃[:,id(n)] = [0. ; pdf.(Geometric(η), 0:size(𝑃)[1]-2)]
-    else
-        @unpack λ, μ = getθ(model.rates, n)
-        t = distance(n)
-        bound = size(𝑃)[1]
-        matrix = [tp(i, j, t, λ, μ) for i=0:bound-1, j=0:bound-1]
-        p = matrix' * 𝑃[:,id(parent(n))]
-        𝑃[:,id(n)] .= p /sum(p)
-    end
-end
+# XXX: see pgf technique for the stuff below! (implemented in Whale)
+# NOTE: experimental, will not work OOTB with WGDs. Also, will not work with gain model. All doable though. First I was trying to compute the probability of extinction somewhere, but the probability of extinction nowhere turned out to be more easily calculated in a preorder, much like one would simulate from a CTMC time with finite state space. This is of course approximate!
+# function extinctnowherecondition(m::PhyloBDP{T}, bound=m.bound*2) where T
+#     𝑃 = zeros(T, bound, length(m.order))
+#     p = one(T)
+#     function walk(n)
+#         _pvec!(𝑃, m, n)
+#         for c in children(n) walk(c) end
+#         if isleaf(n)
+#             p *= sum(𝑃[2:end, id(n)])
+#         end
+#         return
+#     end
+#     walk(root(m))
+#     return log(probify(p))
+# end
+#
+# function _pvec!(𝑃, model, n)
+#     if isroot(n)
+#         @unpack η = getθ(model.rates, n)
+#         𝑃[:,id(n)] = [0. ; pdf.(Geometric(η), 0:size(𝑃)[1]-2)]
+#     else
+#         @unpack λ, μ = getθ(model.rates, n)
+#         t = distance(n)
+#         bound = size(𝑃)[1]
+#         matrix = [tp(i, j, t, λ, μ) for i=0:bound-1, j=0:bound-1]
+#         p = matrix' * 𝑃[:,id(parent(n))]
+#         𝑃[:,id(n)] .= p /sum(p)
+#     end
+# end

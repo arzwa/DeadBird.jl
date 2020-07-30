@@ -8,16 +8,25 @@ using Distributions
 using LightGraphs
 using StatsBase
 using StatsFuns
-using FakeFamily
 using TransformVariables
 using ForwardDiff
+using DataFrames
+using BandedMatrices
 import StatsBase: loglikelihood
-import FakeFamily: Params, RatesModel, getθ, trans
+# import FakeFamily: Params, RatesModel, getθ, trans
 
 include("rmodels.jl")
 include("model.jl")
 include("countdag.jl")
-include("inference.jl")
+include("profile.jl")
+include("dlsim.jl")
+include("ppsim.jl")
+
+include("truncmodel.jl")
+
+export CountDAG, ProfileMatrix, Profile
+export ConstantDLG, DLG, RatesModel, PhyloBDP, GammaMixture
+export mle_problem
 
 # TODO:
 # - Discrete Gamma mixture

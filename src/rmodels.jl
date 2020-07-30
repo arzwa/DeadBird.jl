@@ -1,3 +1,44 @@
+function iswgd end
+function wgdid end
+function nonwgdchild end
+
+abstract type Params{T} end
+
+struct RatesModel{T,M<:Params{T},V}
+    params::M
+    fixed ::Tuple
+    trans ::V
+end
+
+RatesModel(θ; fixed=()) = RatesModel(θ, fixed, gettrans(θ, fixed))
+
+Base.eltype(m::RatesModel{T}) where T = T
+Base.show(io::IO, m::RatesModel) = write(io,
+    "RatesModel with $(m.fixed) fixed\n$(m.params)")
+
+getθ(m::RatesModel, node) = getθ(m.params, node)
+getp(m::P, n) where {T,P<:Params{T}} = hasfield(P, :p) &&
+    length(m.p) > 0 && isleaf(n) ? m.p[id(n)] : 0.
+
+# HACK: a little bit of metaprogramming to allow fixed parameters, necessary?
+function gettrans(p::P, fixed) where P<:Params
+    inner = join(["$k=$v," for (k,v) in pairs(trans(p)) if k ∉ fixed])
+    expr  = Meta.parse("as(($inner))")
+    eval(expr)
+end
+
+(m::RatesModel)(x::Vector) = m(m.trans(x))
+function (m::RatesModel)(θ)
+    θ′ = merge(θ, [k=>findfield(m.params, k) for k in m.fixed])
+    RatesModel(m.params(θ′), m.fixed, m.trans)
+end
+
+function findfield(p::P, f) where {P<:Params{T} where T}
+    hasfield(P, f) ? getfield(p, f) : findfield(p.params, f)
+end
+
+Base.rand(m::M) where M<:RatesModel = m(m.trans(randn(dimension(m.trans))))
+
 """
     ConstantDLG{T}
 
@@ -90,26 +131,5 @@ trans(m::DLGWGD) = (
 (::DLGWGD)(θ) = DLGWGD(;
     λ=θ.λ, μ=θ.μ, q=θ.q, κ=eltype(θ.λ)(θ.κ), η=eltype(θ.λ)(θ.η))
 
-# short hands
-ConstantDLWGD(; fixed=(:κ,), θ...) =
-    RatesModel(ConstantDLGWGD(;θ...), fixed=mergetup(fixed, (:κ,)))
-DLWGD(; fixed=(:κ,), θ...) =
-    RatesModel(DLGWGD(;θ...), fixed=mergetup(fixed, (:κ,)))
-mergetup(t1, t2) = tuple(union(t1, t2)...)
-
-# Mixture wrapper; a marginalized mixture is natural to implement as a wrapper?
-struct GammaMixture{M,T} <: Params{T}
-    params::M
-    rrates::Vector{T}
-    α::T
-    function GammaMixture(m::M, K; α=1.0) where M<:Params{T} where T
-        qs = quantile.(Gamma(α,one(α)/α), collect((0+(1/2K)):(1/K):1))
-        qs .*= K/sum(qs)
-        new{M,T}(m, qs, T(α))
-    end
-end
-
-trans(m::GammaMixture) = merge(trans(m.params), (α=asℝ₊,))
-getθ(m::GammaMixture, node) = getθ(m.params, node)
-(m::GammaMixture)(θ) = GammaMixture(m.params(θ), length(m.rrates), α=θ.α)
-getparam(m::GammaMixture, v) = v != :α ? getparam(m.params, v) : m.α
+const LinearModel = RatesModel{T,V} where
+    {T,V<:Union{ConstantDLG,DLG,DLGWGD,ConstantDLGWGD}}

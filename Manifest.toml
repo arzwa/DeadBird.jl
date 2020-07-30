@@ -91,12 +91,6 @@ git-tree-sha1 = "88bb0edb352b16608036faadcc071adda068582a"
 uuid = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
 version = "0.8.1"
 
-[[FakeFamily]]
-deps = ["Distributions", "NewickTree", "Parameters", "StatsBase", "TransformVariables"]
-path = "../FakeFamily"
-uuid = "0577ea09-897c-4e06-b0d4-a2e3d1c9af03"
-version = "0.1.0"
-
 [[FillArrays]]
 deps = ["LinearAlgebra", "Random", "SparseArrays"]
 git-tree-sha1 = "44f561e293987ffc84272cd3d2b14b0b93123d63"
@@ -163,16 +157,16 @@ uuid = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
 version = "0.3.3"
 
 [[NewickTree]]
-deps = ["AbstractTrees"]
+deps = ["AbstractTrees", "Test"]
 path = "../NewickTree"
 uuid = "b0a14db8-6308-4ebc-8917-f72cd81f5094"
 version = "0.2.0"
 
 [[OpenBLAS_jll]]
 deps = ["CompilerSupportLibraries_jll", "Libdl", "Pkg"]
-git-tree-sha1 = "1887096f6897306a4662f7c5af936da7d5d1a062"
+git-tree-sha1 = "0c922fd9634e358622e333fc58de61f05a048492"
 uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
-version = "0.3.9+4"
+version = "0.3.9+5"
 
 [[OpenSpecFun_jll]]
 deps = ["CompilerSupportLibraries_jll", "Libdl", "Pkg"]
@@ -228,9 +222,9 @@ version = "0.6.1"
 
 [[Rmath_jll]]
 deps = ["Libdl", "Pkg"]
-git-tree-sha1 = "1660f8fefbf5ab9c67560513131d4e933012fc4b"
+git-tree-sha1 = "d76185aa1f421306dec73c057aa384bad74188f0"
 uuid = "f50d1b31-88e8-58de-be2c-1cc44531875f"
-version = "0.2.2+0"
+version = "0.2.2+1"
 
 [[SHA]]
 uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"

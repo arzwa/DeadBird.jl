@@ -1,3 +1,5 @@
+# XXX obsolete since Turing has MLE support now
+
 """
     mle_problem(dag, model)
 
@@ -9,6 +11,7 @@ function mle_problem(dag, model)
     t = model.rates.trans
     function f(x::Vector{T}) where T<:Real
         # rates = model.rates(t(x))
+        !(all(isfinite.(x))) && return Inf
         m = model(t(x))
         d = copydag(dag, T)
         -loglikelihood!(d, m)

@@ -1,6 +1,7 @@
-# I think a representation like the following is good, it does not have to be  modified at any point during agorithms
+# I think a representation like the following is good,
+# it does not have to be  modified at any point during agorithms
 struct NodeData{I}
-    snode::I
+    snode::I   # species tree node
     count::Int
     bound::Int
 end
@@ -8,15 +9,15 @@ end
 """
     CountDAG{T,G,I}
 
-The directed acyclic graph (DAG) representation of a phylogenetic
-profile for an (assumed known) species tree. This is a [multitree](
-https://en.wikipedia.org/wiki/Multitree)
+The directed acyclic graph (DAG) representation of a phylogenetic profile
+for an (assumed known) species tree.
+This is a [multitree](https://en.wikipedia.org/wiki/Multitree)
 
     CountDAG(matrix, header, tree::Node)
 
-Build the gene count DAG from `matrix` with a `header` corresponding
-to leaf names of `tree`. Returns the bound as well (for the PhyloBDP
-model constructor).
+Build the gene count DAG from `matrix` with a `header`
+corresponding to leaf names of `tree`.
+Returns the bound as well (for the PhyloBDP model constructor).
 """
 struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
     graph ::SimpleDiGraph{G}  # the DAG, with vertices ordered in a post-order
@@ -28,11 +29,13 @@ end
 
 Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
 
-# An alternative implementation would be to directly implement a DAGNode type with parents, children, the partial likelihood vector etc.
+# An alternative implementation would be to directly implement a DAGNode type
+# with parents, children, the partial likelihood vector etc.
 
-# The copy function is important for AD applications. It's quite cheap when using `similar`.
+# The copy function is important for AD applications.
+# It's quite cheap when using `similar`.
 copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata,
-    similar(g.parts,Vector{T}), g.nfam)
+    similar(g.parts, Vector{T}), g.nfam)
 
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
 CountDAG(df, tree) = CountDAG(Matrix(df), names(df), tree)
@@ -57,13 +60,28 @@ function CountDAG(matrix::Matrix, names, tree)
     walk(tree, 1)
     bound = maximum([n.bound for n in ndata])+1
     levels = collect(values(sort(levels, rev=true)))
-    (dag=CountDAG(dag, levels, ndata, parts, size(matrix)[1]),
-        bound=bound)
+    cdag = CountDAG(dag, levels, ndata, parts, size(matrix)[1])
+    (dag=cdag, bound=bound)
 end
 
-# We might want to implement a dedicated DAG builder for single gene families, in a way that we can use the same functions for computing the likelihood etc. when we do not want to lump all the data together (because of different model parameters for different families).
+# We might want to implement a dedicated DAG builder for single gene families,
+# in a way that we can use the same functions for computing the likelihood etc.
+# when we do not want to lump all the data together
+# (because of different model parameters for different families).
+# NOTE: well we have the profile matrix now, but still
+# it could be interesting to be able to efficiently obtain 'subgraphs'
+# from the CountDAG.
 
-function add_leaves!(dag, ndata, parts, x, n)  # x are leaf counts
+"""
+    add_leaves!(dag, ndata, parts, x, n)
+
+For a species tree leaf node `n`,
+this adds the vector of (gene) counts `x`
+for that species to the graph.
+This returns for each gene family
+the corresponding node that was added to the graph
+"""
+function add_leaves!(dag, ndata, parts, x, n)
     idmap = Dict()
     for (k,v) in countmap(x)
         push!(ndata, NodeData(n, v, k))
@@ -71,10 +89,24 @@ function add_leaves!(dag, ndata, parts, x, n)  # x are leaf counts
         add_vertex!(dag)
         idmap[k] = nv(dag)
     end
-    [idmap[xᵢ] for xᵢ in x]  # returns for each leaf count the corresponding node that was added to the graph
+    [idmap[xᵢ] for xᵢ in x]
 end
 
-function add_internal!(dag, ndata, parts, x, n)  # x are tuples of DAG nodes
+"""
+    add_internal!(dag, ndata, parts, x, n)
+
+For a species tree internal node `n`,
+this adds the gene family nodes associated with `n` to the graph
+and provides the bound on the number of lineages that survive
+to the present below `n` for each gene family.
+Note that `x` is a vector of tuples of DAG nodes
+that each will be joined into a newly added node.
+The resulting nodes are returned.
+
+NOTE: I believe this also works for multifurcating species trees
+(like the Csuros Miklos algorithm does too)
+"""
+function add_internal!(dag, ndata, parts, x, n)
     idmap = Dict()
     for (k,v) in countmap(collect(x))
         bound = sum([ndata[i].bound for i in k])
@@ -84,7 +116,7 @@ function add_internal!(dag, ndata, parts, x, n)  # x are tuples of DAG nodes
         for j in k add_edge!(dag, i, j) end
         idmap[k] = i
     end
-    [idmap[xᵢ] for xᵢ in x]  # returns for each split the corresponding node that was added to the graph
+    [idmap[xᵢ] for xᵢ in x]
 end
 
 function add_root!(dag, ndata, x, n)
@@ -95,14 +127,17 @@ end
 Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T =
     loglikelihood!(copydag(x, T), m)
 
+Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
+    x::CountDAG) where {VF,VS,T} = loglikelihood!(copydag(x, T), m)
+
 """
     loglikelihood!(dag::CountDAG, model::PhyloBDP)
 
 Compute the log likelihood on the DAG using the Csuros & Miklos
 algorithm.
 """
-function loglikelihood!(dag, model)
-    # for n in 1:nv(dag.graph)-1 cm!(dag, n, model) end
+function loglikelihood!(dag::CountDAG,
+        model::PhyloBDP{T,V}) where {T,V<:LinearModel}
     for level in dag.levels  # parallelism possible within levels
         Threads.@threads for n in level
             cm!(dag, n, model)
@@ -111,9 +146,11 @@ function loglikelihood!(dag, model)
     ℓ = acclogpdf(dag, model) - dag.nfam*conditionfactor(model)
     isfinite(ℓ) ? ℓ : -Inf
 end
-# NOTE: I guess a distributed approach using SharedArray or DArray could be more efficient, but it's much less convenient (and not so compatible with AD?)
+# NOTE: I guess a distributed approach using SharedArray or DArray
+# could be more efficient, but it's much less convenient
+# (and not so compatible with AD?)
 
-function acclogpdf(dag, model)
+function acclogpdf(dag::CountDAG, model)
     @unpack graph, ndata, parts = dag
     @unpack η = getθ(model.rates, root(model))
     ϵ = log(probify(getϵ(root(model), 2)))
@@ -124,26 +161,26 @@ function acclogpdf(dag, model)
     return ℓ
 end
 
-# implementation for a marginalized mixture model
-function loglikelihood!(dag, model::PhyloBDP{T,V}) where
-        {T,V<:RatesModel{T,<:GammaMixture}}
-    @unpack params, rrates = model.rates.params
+function loglikelihood!(dag::CountDAG,
+        model::MixtureModel{VF,VS,<:PhyloBDP{T,V}}) where {VF,VS,T,V<:LinearModel}
     @unpack graph, ndata = dag
+    K = length(model.components)
     nodes = outneighbors(graph, nv(graph))
-    K = length(rrates)
-    matrix = zeros(T, length(nodes),K)
-    for (i,rr) in enumerate(rrates)
-        setmodel!(model.order, params*rr)
+    matrix = zeros(T, length(nodes), K)
+    counts = [ndata[n].count for n in nodes]
+    for (i, m) in enumerate(model.components)
         for level in dag.levels  # parallelism possible within levels
             Threads.@threads for n in level
-                cm!(dag, n, model)
+                cm!(dag, n, m)
             end
         end
-        matrix[:,i] .= sitepatterns_ℓ(dag, model, nodes)
+        matrix[:,i] .= sitepatterns_ℓ(dag, m, nodes)
+        matrix[:,i] .-= conditionfactor(m)
+        # the condition factor differs for the different components,
+        # and we apply it for each site pattern
     end
     ℓs = vec(logsumexp(matrix, dims=2)) .- log(K)
-    ℓ = sum([ndata[n].count*ℓs[i] for (i,n) in enumerate(nodes)]) -
-        dag.nfam*rootcondition(model)
+    ℓ = sum([ndata[n].count*ℓs[i] for (i,n) in enumerate(nodes)])
     isfinite(ℓ) ? ℓ : -Inf
 end
 
@@ -157,11 +194,12 @@ end
 """
     cm!(dag, node, model)
 
-Compute the conditional survival probabilities at `n` using
-Csuros & Miklos algorithm. This assumes the `model` already contains
-the computed transition probability matrices `W` and that the partial
-loglikelihood vectors for the child nodes in the DAG are already
-computed and available.
+Compute the conditional survival probabilities at `n`
+using the Csuros & Miklos (2009) algorithm.
+This assumes the `model` already contains
+the computed transition probability matrices `W`
+and that the partial loglikelihood vectors
+for the child nodes in the DAG are already computed and available.
 """
 @inline function cm!(dag::CountDAG{T}, n, model) where T
     @unpack graph, ndata, parts = dag
