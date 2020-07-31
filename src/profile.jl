@@ -3,6 +3,8 @@ struct Profile{T,I}
     x::Vector{I}
     ℓ::Vector{Vector{T}}
 end
+Profile(x, ::Type{T}=Float64) where T = Profile(x, getparts(x, T))
+Profile(x, n::Int, ::Type{T}=Float64) where T = Profile(x, getparts(x, n, T))
 Base.length(p::Profile) = length(p.x)
 Base.show(io::IO, p::Profile{T,I}) where {T,I} =
     write(io, "Profile{$T,$I}($(p.x), $(sum(p.ℓ[1])))")
@@ -32,7 +34,7 @@ function ProfileMatrix(matrix::Matrix, names, tree, T=Float64)
             end
         end
     end
-    M = ProfileMatrix([Profile(profile[i,:], getparts(profile[i,:], T)) for i=1:N])
+    M = ProfileMatrix([Profile(profile[i,:]) for i=1:N])
     (matrix=M, bound=maximum(profile))
 end
 
@@ -45,42 +47,10 @@ Base.getindex(P::ProfileMatrix, i, j) = P.profiles[i].x[j]
 Base.size(P::ProfileMatrix) = (length(P.profiles), length(P[1]))
 nfamilies(P::ProfileMatrix) = size(P)[1]
 
-@inline function cm!(profile::Profile{T}, n, model) where T
-    # n is a node from the model
-    @unpack x, ℓ = profile
-    bound = length(x)
-    if isleaf(n)  # leaf case
-        return ℓ[id(n)][x[id(n)]+1] = zero(T)
-    end
-    kids = children(n)
-    kmax = [x[id(k)] for k in kids]
-    kcum = cumsum([0 ; kmax])
-    keps = [getϵ(c, 1) for c in kids]
-    ϵcum = cumprod([1.; keps])
-    B = fill(T(-Inf), (bound, kcum[end]+1, length(kmax)))
-    A = fill(T(-Inf), (kcum[end]+1, length(kmax)))
-    for (i, kid) in enumerate(kids)
-        @unpack W = model[id(kid)].data
-        cm_inner!(i, A, B, W, ℓ[id(kid)],
-            ϵcum, kcum, kmax[i], log(keps[i]))
-    end
-    ℓ[id(n)] = A[:,end]
-end
+Distributions.logpdf(m::PhyloBDP{T}, x::ProfileMatrix) where T = loglikelihood!(x(T), m)
+Distributions.logpdf(m::PhyloBDP{T}, x::Profile) where T = loglikelihood!(x(T), m)
 
-function loglikelihood!(p::Profile, model::PhyloBDP{T,V},
-        condition=true) where {T,V<:LinearModel}
-    @unpack η = getθ(model.rates, root(model))
-    ϵ = log(probify(getϵ(root(model), 2)))
-    for n in model.order
-        cm!(p, n, model)
-    end
-    ℓ = ∫rootgeometric(p.ℓ[1], η, ϵ)
-    if condition
-        ℓ -= conditionfactor(model)
-    end
-    isfinite(ℓ) ? ℓ : -Inf
-end
-
+# This is shared over both linear/nonlinear models
 function loglikelihood!(P::ProfileMatrix{T,I}, model) where {T,I}
     ℓs = zeros(T, nfamilies(P))
     Threads.@threads for i=1:nfamilies(P)
@@ -89,6 +59,3 @@ function loglikelihood!(P::ProfileMatrix{T,I}, model) where {T,I}
     ℓ = sum(ℓs) - length(ℓs)*conditionfactor(model)
     isfinite(ℓ) ? ℓ : -Inf
 end
-
-Distributions.logpdf(m::PhyloBDP{T}, x::Union{ProfileMatrix,Profile}) where T =
-    loglikelihood!(x(T), m)

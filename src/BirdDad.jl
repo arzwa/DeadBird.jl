@@ -21,7 +21,7 @@ include("countdag.jl")
 include("profile.jl")
 include("dlsim.jl")
 include("ppsim.jl")
-
+include("linear.jl")
 include("nonlinear.jl")
 
 export CountDAG, ProfileMatrix, Profile

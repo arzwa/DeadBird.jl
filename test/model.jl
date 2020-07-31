@@ -14,7 +14,7 @@ Random.seed!(624)
     @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(X)[1]
     r = RatesModel(ConstantDLG(λ=0.1, μ=.12, κ=0.0, η=0.9))
     m = PhyloBDP(r, tree, bound)
-    @test BirdDad.loglikelihood!(dag, m) ≈ -251.03583571055526
+    @test BirdDad.loglikelihood!(dag, m) ≈ -251.0360331682765
 end
 
 @testset "Profiles" begin
@@ -32,7 +32,7 @@ end
 end
 
 # This is an important test, comparing to an independent implementation
-@testset "Compare CM algorithm with WGDgc (Cécile Ané)" begin
+@testset "Compare CM algorithm with WGDgc (Ané)" begin
     tree = readnw("(D:18.03,(C:12.06,(B:7.06,A:7.06):4.99):5.97);")
     X = [2 2 3 4 ; 2 2 3 4]
     s = ["A" "B" "C" "D"]
@@ -40,7 +40,8 @@ end
     r = RatesModel(ConstantDLG(λ=.2, μ=.3, κ=0.0, η=0.9))
     m = PhyloBDP(r, tree, bound)
     ℓ = BirdDad.loglikelihood!(dag, m)
-    @test isapprox(ℓ, -19.4707431557829, atol=1e-6)
+    # @test isapprox(ℓ, -19.4707431557829, atol=1e-6)  # WGDgc with oneInBothClades
+    @test isapprox(ℓ, -19.624930615416645, atol=1e-6)
     wgdgc = [-Inf, -13.032134, -10.290639, -8.968442, -8.413115,
              -8.380409, -8.78481, -9.592097, -10.801585, -12.448171,
              -14.62676, -17.606982]
@@ -81,18 +82,49 @@ end
     ℓ2 = BirdDad.loglikelihood!(ps, model)
     @test ℓ1 ≈ ℓ2
 
+    # ConstantDLSC with μ₁ == μ should be identical to ConstantDL
     for i=1:10
         r = exp.(randn(2))
-        η = rand()
+        η = rand(Beta(6,2))
         dag, bound = CountDAG(X, s, tree)
-        dag_ = BirdDad.nonlineardag(dag, 10bound)
-        rates = RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=10bound))
-        model = PhyloBDP(rates, tree, 10bound)
-        ℓ1 = BirdDad.loglikelihood!(dag_, model)
 
         rates = RatesModel(ConstantDLG(λ=r[1], μ=r[2], κ=.0, η=η))
-        model = PhyloBDP(rates, tree, bound)
-        ℓ2 = BirdDad.loglikelihood!(dag, model)
-        @show ℓ1, ℓ2
+        model1 = PhyloBDP(rates, tree, bound)
+        ℓ1 = BirdDad.loglikelihood!(dag, model1)
+
+        dag_ = BirdDad.nonlineardag(dag, 10bound)
+        rates= RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=10bound))
+        model2 = PhyloBDP(rates, tree, 10bound)
+        ℓ2 = BirdDad.loglikelihood!(dag_, model2)
+
+        ps, bound = ProfileMatrix(X, s, tree)
+        ps = BirdDad.nonlinearprofile(ps, 10bound)
+        ℓ3 = BirdDad.loglikelihood!(ps, model2)
+        @test ℓ1 ≈ ℓ2 ≈ ℓ3
     end
 end
+
+# begin
+#     using BenchmarkTools
+#     X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
+#     tree = readnw(readline("example/9dicots.nw"))
+#
+#     # r = exp.(randn(2))
+#     r = [0.25, 0.2]
+#     η = rand(Beta(6,2))
+#     for bound in [10,25,50,100]
+#         dag, b = CountDAG(X, s, tree)
+#         rates  = RatesModel(ConstantDLG(λ=r[1], μ=r[2], κ=.0, η=η))
+#         model1 = PhyloBDP(rates, tree, b)
+#         ℓ1 = BirdDad.loglikelihood!(dag, model1)
+#         t1 = @benchmark BirdDad.loglikelihood!(dag, model1)
+#         @printf "cm: ℓ = %.3f, t = %6.3f, m = %.3f\n" ℓ1 mean(t1.times)/1000 mean(t1.allocs)/1000
+#
+#         dag_   = BirdDad.nonlineardag(dag, bound)
+#         rates  = RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=bound))
+#         model2 = PhyloBDP(rates, tree, bound)
+#         ℓ2 = BirdDad.loglikelihood!(dag_, model2)
+#         t2 = @benchmark BirdDad.loglikelihood!(dag_, model2)
+#         @printf "tr: ℓ = %.3f, t = %6.3f, m = %.3f, bound = %d\n\n" ℓ2 mean(t2.times)/1000 mean(t2.allocs)/1000 size(model2.rates.params.Q)[1]
+#     end
+# end

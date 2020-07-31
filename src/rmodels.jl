@@ -1,3 +1,6 @@
+# XXX: how does the prior on the root work for models that include gain???
+# Normally, the prior probability mass for our geometric prior is 0 for Xₒ = 0!
+
 function iswgd end
 function wgdid end
 function nonwgdchild end
@@ -133,3 +136,45 @@ trans(m::DLGWGD) = (
 
 const LinearModel = RatesModel{T,V} where
     {T,V<:Union{ConstantDLG,DLG,DLGWGD,ConstantDLGWGD}}
+
+
+# Non-linear models
+"""
+    ConstantDLSC{T}
+
+Constant rates duplication-loss model with different loss rates
+when in single copy state.
+"""
+struct ConstantDLSC{T} <: Params{T}
+    λ ::T
+    μ ::T
+    μ₁::T
+    η ::T
+    m ::Int   # truncation bound
+    Q ::Matrix{T}
+
+    function ConstantDLSC(λ::T, μ::T, μ₁::T, η::T, m::Int) where T
+        p = new{T}(λ, μ, μ₁, η, m, Matrix{T}(undef, m+1, m+1))
+        setratematrix!(p)
+        return p
+    end
+end
+
+ConstantDLSC(; λ=0.1, μ=0.1, μ₁=0.01, η=0.66, m=10) =
+    ConstantDLSC(promote(λ, μ, μ₁, η)..., m)
+
+Base.show(io::IO, m::ConstantDLSC) = write(io, "ConstantDLSC(\n λ  = $(m.λ),",
+    "\n μ  = $(m.μ),\n μ₁ = $(m.μ₁),\n η  = $(m.η),\n m  = $(m.m))")
+
+getθ(m::ConstantDLSC, node) = m
+getQ(m::ConstantDLSC, node) = m.Q
+trans(::ConstantDLSC) = (λ=asℝ₊, μ=asℝ₊, μ₁=asℝ₊, η=as𝕀)
+(::ConstantDLSC)(θ) = ConstantDLSC(; λ=θ.λ, μ=θ.μ, μ₁=θ.μ₁, η=θ.η)
+
+function setratematrix!(p::ConstantDLSC)
+    @unpack λ, μ, μ₁, η, m = p
+    μs = [μ₁ ; μ .* collect(2:m)]
+    λs = λ .* collect(0:(m-1))
+    ds = vcat(0., -λs[2:end] .- μs[1:end-1], -μs[end])
+    p.Q .= Matrix(BandedMatrix(-1=>μs, 1=>λs, 0=>ds))
+end
