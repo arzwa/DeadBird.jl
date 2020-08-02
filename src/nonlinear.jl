@@ -22,7 +22,7 @@ end
 function setW!(n::ModelNode{T}, rates) where T
     isroot(n) && return
     Q = getQ(rates.params, n)
-    n.data.W .= exp(Q*distance(n))
+    n.data.W .= _exp(Q*distance(n))
 end
 
 # NOTE: for non-linear models the pgf formulation can't be used
@@ -61,7 +61,6 @@ function loglikelihood!(dag::CountDAG, model)
     for level in dag.levels  # parallelism possible within levels
         # Threads.@threads for n in level
         for n in level
-            LightGraphs.outdegree(dag.graph, n) == 0 && continue
             prune!(dag, n, model)
         end
     end
@@ -82,13 +81,22 @@ end
 
 @inline function prune!(dag::CountDAG{T}, n, model) where T
     @unpack ndata, parts, graph = dag
-    parts[n] .= zero(T)
-    # loop over childnodes
+    outdegree(graph, n) == 0 && return initpartsleaf!(dag, n, model)
+    initparts!(dag, n, model)
     for c in outneighbors(graph, n)
         𝑃 = model[ndata[c].snode].data.W
         parts[n] .+= log.(𝑃 * exp.(parts[c]))
     end
 end
+
+function initpartsleaf!(dag::CountDAG{T}, n, model) where T
+    @unpack ndata, parts = dag
+    parts[n] = fill(-Inf, model.bound)
+    parts[n][ndata[n].bound+1] = zero(T)
+end
+
+initparts!(dag::CountDAG{T}, n, model) where T =
+    dag.parts[n] = zeros(T, model.bound)
 
 # nonlinear models
 function loglikelihood!(p::Profile, model, condition=true)

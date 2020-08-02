@@ -7,6 +7,8 @@ Random.seed!(624)
 
 const ML = false
 
+@test isempty(Test.detect_ambiguities(Base, Core, YourPackage))
+
 @testset "BirdDad tests" begin
     include("model.jl")
     ML && include("mle.jl")

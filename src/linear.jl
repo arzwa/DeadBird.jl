@@ -58,7 +58,7 @@ function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
     # that is anyway the case also if we don't employ the CM algorithm)
 end
 
-Base.show(io::IO, x::ForwardDiff.Dual) = show(io, "dual$(x.value)")
+# Base.show(io::IO, x::ForwardDiff.Dual) = show(io, "dual$(x.value)")
 
 function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ

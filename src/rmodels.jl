@@ -169,7 +169,7 @@ Base.show(io::IO, m::ConstantDLSC) = write(io, "ConstantDLSC(\n λ  = $(m.λ),",
 getθ(m::ConstantDLSC, node) = m
 getQ(m::ConstantDLSC, node) = m.Q
 trans(::ConstantDLSC) = (λ=asℝ₊, μ=asℝ₊, μ₁=asℝ₊, η=as𝕀)
-(::ConstantDLSC)(θ) = ConstantDLSC(; λ=θ.λ, μ=θ.μ, μ₁=θ.μ₁, η=θ.η)
+(::ConstantDLSC)(θ) = ConstantDLSC(; λ=θ.λ, μ=θ.μ, μ₁=θ.μ₁, η=θ.η, m=θ.m)
 
 function setratematrix!(p::ConstantDLSC)
     @unpack λ, μ, μ₁, η, m = p

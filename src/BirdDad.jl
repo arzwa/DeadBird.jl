@@ -9,30 +9,28 @@ using LightGraphs
 using StatsBase
 using StatsFuns
 using TransformVariables
-using ForwardDiff
 using DataFrames
 using BandedMatrices
 import StatsBase: loglikelihood
 # import FakeFamily: Params, RatesModel, getθ, trans
 
+include("mexp.jl")
 include("rmodels.jl")
 include("model.jl")
 include("countdag.jl")
 include("profile.jl")
-include("dlsim.jl")
-include("ppsim.jl")
 include("linear.jl")
 include("nonlinear.jl")
+include("dlsim.jl")
+include("ppsim.jl")
 
 export CountDAG, ProfileMatrix, Profile
-export ConstantDLG, DLG, RatesModel, PhyloBDP, GammaMixture
-export mle_problem
+export ConstantDLG, DLG, RatesModel, PhyloBDP, ConstantDLSC
 
 # TODO:
-# - Discrete Gamma mixture
+# - WGDs in matrix based approach
 # - Dirichlet process mixture
 # - Regression
-# - Ordinary matrix based approach
 # - Ancestral states https://gitlab.psb.ugent.be/arzwa/beluga/blob/reversible-jump/src/_em.jl
 
 end # module

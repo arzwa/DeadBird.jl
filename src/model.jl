@@ -60,7 +60,7 @@ end
 # i.e. they establish a model based on an already available model structure
 # and a new set of parameters.
 # The first makes a copy, the second modifies the existing model.
-(m::PhyloBDP)(θ) = PhyloBDP(m.rates(θ), m.order[end], m.bound, cond=m.cond)
+(m::PhyloBDP)(θ) = PhyloBDP(m.rates(θ), m.order[end], m.bound-1, cond=m.cond)
 function update!(m::PhyloBDP, θ)
     m.rates = m.rates(θ)
     setmodel!(m)

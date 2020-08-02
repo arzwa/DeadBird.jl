@@ -14,15 +14,29 @@ NewickTree.name(n::Node{I,<:Rec}) where I =
 getlabel(n::Node{I,<:Rec}) where I = n.data.l
 label!(r) = for (i, x) in enumerate(prewalk(r)) x.id = i end
 
+Base.rand(model::PhyloBDP, leaves=name.(getleaves(getroot(model)))) =
+    randprofile(model, leaves)
+
+function randprofile(model::LPhyloBDP, leaves)
+    t = randtree(model)
+    pruneloss!(t)
+    profile(t, leaves)
+end
+
 """
-Simple recursive simulator for DL(WGD) model with a homogeneous
+    randtree(model::PhyloBDP)
+    randtree(tree, model::RatesModel)
+
+Simple recursive tree simulator for DL(WGD) model with a homogeneous
 rate for each branch. Currently assumes the Geometric prior on
 the number of lineages at the root. Note that gain events are
 not simulated, so if a DLG model is provided, the gain rate will
 be ignored.
 """
-dlsim(Ψ, θ) = dlsim(Ψ, θ, rand(Geometric(θ.params.η))+1)
-function dlsim(Ψ, θ, a::Int)
+randtree(model) = randtree(model, model.rates)
+randtree(Ψ, θ)  = randtree(Ψ, θ, rand(Geometric(θ.params.η))+1)
+
+function randtree(Ψ, θ, a::Int)
     sproot = getroot(Ψ)
     ns = [dlsim!(Node(0, Rec(id(sproot), 0., "")), 0., sproot, θ) for i=1:a]
     root = Node(0, Rec(id(sproot), 0., a>1 ? "dup" : "sp"))
@@ -31,7 +45,8 @@ function dlsim(Ψ, θ, a::Int)
     return root
 end
 
-function dlsim!(n, t, e, model) where I
+# Linear models
+function dlsim!(n, t, e, model::LinearModel)
     @unpack λ, μ = getθ(model, e)
     w = randexp(λ+μ)
     t -= w
@@ -94,33 +109,53 @@ function profile(t, sleaves::Vector)
     Dict(k=>haskey(m, k) ? m[k] : 0 for k in sleaves)
 end
 
-dlsimbunch(Ψ, N; kwargs...) = dlsimbunch(getroot(Ψ), Ψ.rates, N; kwargs...)
-function dlsimbunch(Ψ, model, N; condition=:none, minn=3)
+function dlsimbunch(model, N; condition=:none, minn=3)
+    o = getroot(model)
     if condition == :root
-        condition = [name.(getleaves(Ψ[1])), name.(getleaves(Ψ[2]))]
+        condition = [name.(getleaves(o[1])), name.(getleaves(o[2]))]
     elseif condition == :all
-        condition = [[name(x)] for x in getleaves(Ψ)]
+        condition = [[name(x)] for x in getleaves(o)]
     elseif condition == :none
-        condition = [name.(getleaves(Ψ))]
+        condition = [name.(getleaves(o))]
     end
-    n = 0; m = 0
-    leaves = name.(getleaves(Ψ))
-    tree = dlsim(Ψ, model)
-    trees = typeof(tree)[]
-    profiles = DataFrame()
-    while length(trees) < N
-        t = dlsim(Ψ, model)
-        pruneloss!(t)
-        p = profile(t, leaves)
-        l = length(getleaves(t))
-        if !all([any(x->p[x] > 0, xs) for xs in condition]) || l < minn
-            n += 1
-            all(x->x==0, values(p)) ? m += 1 : nothing
-            continue
+    accept(p, l) = all([any(x->p[x] > 0, xs) for xs in condition]) && l >= minn
+    n = m = 0
+    leaves = name.(getleaves(o))
+    out = map(1:N) do i
+        p = undef
+        while true
+            p = randprofile(model, leaves)
+            l = sum(values(p))
+            accept(p, l) ? break : n += 1
         end
-        profiles = vcat(profiles, DataFrame(p))
-        push!(trees, t)
+        DataFrame(p)
     end
-    @debug "$n trees violated condition, of which $m were completely extinct"
-    return (trees=trees, profiles=profiles, violated=n/N)
+    (violated=n/N, profiles=vcat(out...))
+end
+
+# Vector of named tuples -> named tuple of vectors
+# # (based on the field names in the first element)
+# function group(X::Vector{<:NamedTuple})
+#     map(keys(X[1])) do f
+#         (;f=>mapreduce(x->getfield(x,f), vcat, X),)
+#     end
+# end
+
+# Simulate profiles directly using truncated model
+function randprofile(model, leaves)
+    profile = Dict{String,Int}(s=>0 for s in leaves)
+    function walk(n, x)
+        if isleaf(n)
+            profile[name(n)] = x
+            return
+        end
+        for c in children(n)
+            p = c.data.W[x+1,:]
+            x′ = sample(Weights(p)) - 1
+            walk(c, x′)
+        end
+    end
+    xₒ = Int(rand(truncated(Geometric(model.rates.params.η), 1, model.bound-1)))
+    walk(getroot(model), xₒ)
+    return profile
 end

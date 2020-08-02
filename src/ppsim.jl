@@ -8,18 +8,6 @@ function sim(pp::PostPredSim, N, M;
         sumfun=identity, condition=:root)
     @unpack posterior, model, paramfun = pp
     n, m = size(pp.posterior)
-    # ts, ps = dlsimbunch(model, 1, minn=2)
-    # Y = typeof(sumfun(ps))[]
-    # X = typeof(ps)[]
-    # T = typeof(ts)[]
-    # for i=1:N
-    #     x = posterior[rand(1:n),:]
-    #     model′ = paramfun(model, x)
-    #     ts, ps = dlsimbunch(model′, M, minn=2, condition=condition)
-    #     sumfun != identity && push!(Y, sumfun(ps))
-    #     profiles && push!(X, ps)
-    #     trees && push!(T, ts)
-    # end
     map(1:N) do i
         x = posterior[rand(1:n),:]
         model′ = paramfun(model, x)
