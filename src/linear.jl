@@ -125,7 +125,7 @@ _bin(n, k) = n > 60 ?
     binomial(n, k)
 
 """
-    ∫rootgeometric(ℓ, η, ϵ)
+    ∫rootshiftgeometric(ℓ, η, ϵ)
 
 Integrate the loglikelihood at the root for the conditional process,
 with the prior on the number of lineages existing (X) at the root
@@ -136,10 +136,20 @@ that leave observed descendants. `le` log extinction probablity lϵ.
 This function computes ℙ{data|X} based on ℙ{data|Y} (right?).
 Assumes at least one ancestral gene.
 """
-@inline function ∫rootgeometric(ℓ, η, lϵ)
+@inline function ∫rootshiftgeometric(ℓ, η, lϵ)
     p = -Inf
     for i in 2:length(ℓ)
-        f = (i-1)*log1mexp(lϵ) + log(η) + (i-2)*log(1. - η)
+        f = (i-1)*log1mexp(lϵ) + (i-2)*log(1. - η) + log(η)
+        f -= i*log1mexp(log(one(η) - η)+lϵ)
+        p = logaddexp(p, ℓ[i] + f)
+    end
+    return p
+end
+
+@inline function ∫rootgeometric(ℓ, η, lϵ)
+    p = -Inf
+    for i in 1:length(ℓ)
+        f = (i-1)*(log1mexp(lϵ) + log(1. - η)) + log(η)
         f -= i*log1mexp(log(one(η) - η)+lϵ)
         p = logaddexp(p, ℓ[i] + f)
     end
@@ -172,7 +182,7 @@ function acclogpdf(dag::CountDAG, model::LPhyloBDP{T}) where T
     ϵ = log(probify(getϵ(root(model), 2)))
     ℓ = 0.
     for n in outneighbors(graph, nv(graph))
-        ℓ += ndata[n].count*∫rootgeometric(parts[n], η, ϵ)
+        ℓ += ndata[n].count*∫root(parts[n], model.rates, ϵ)
     end
     return ℓ
 end
@@ -207,7 +217,7 @@ function sitepatterns_ℓ(dag, model, nodes)
     @unpack graph, ndata, parts = dag
     @unpack η = getθ(model.rates, model[1])
     ϵ = log(probify(getϵ(model[1], 2)))
-    [∫rootgeometric(parts[n], η, ϵ) for n in nodes]
+    [∫root(parts[n], model.rates, ϵ) for n in nodes]
 end
 
 """
@@ -285,11 +295,22 @@ function loglikelihood!(p::Profile,
     for n in model.order
         cm!(p, n, model)
     end
-    ℓ = ∫rootgeometric(p.ℓ[1], η, ϵ)
+    ℓ = ∫root(p.ℓ[1], model.rates, ϵ)
     if condition
         ℓ -= conditionfactor(model)
     end
     isfinite(ℓ) ? ℓ : -Inf
+end
+
+function ∫root(p, rates, ϵ) 
+    @unpack η = rates.params
+    if rates.rootprior == :shifted 
+        ℓ = ∫rootshiftgeometric(p, η, ϵ)
+    elseif rates.rootprior == :geometric
+        ℓ = ∫rootgeometric(p, η, ϵ)
+    else
+        throw("$(rates.rootprior) not implemented!")
+    end
 end
 
 @inline function cm!(profile::Profile{T}, n, model) where T

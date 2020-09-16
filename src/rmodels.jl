@@ -1,5 +1,16 @@
 # XXX: how does the prior on the root work for models that include gain???
 # Normally, the prior probability mass for our geometric prior is 0 for Xₒ = 0!
+# TODO: This! we should at least allow for shifted geometric (currently only
+# available one), geometric, and Poisson distributions on the root state I
+# guess?
+# Since they are all single parameter, we can just implement them at the 
+# RatesModel level I guess, with the η parameter having different meanings
+# for the different models. Not as general as I'd like it though, but whatever
+# (for now).
+# But the transformation would be different for Poisson, so it should already
+# require a more general approach, let's keep that for later and now just work
+# with an if-else condition, not using dispatch on some rootprior distribution
+# type
 
 function iswgd end
 function wgdid end
@@ -11,9 +22,11 @@ struct RatesModel{T,M<:Params{T},V}
     params::M
     fixed ::Tuple
     trans ::V
+    rootprior::Symbol
 end
 
-RatesModel(θ; fixed=()) = RatesModel(θ, fixed, gettrans(θ, fixed))
+RatesModel(θ; fixed=(), rootprior=:shifted) = 
+    RatesModel(θ, fixed, gettrans(θ, fixed), rootprior)
 
 Base.eltype(m::RatesModel{T}) where T = T
 Base.show(io::IO, m::RatesModel) = write(io,
@@ -33,7 +46,7 @@ end
 (m::RatesModel)(x::Vector) = m(m.trans(x))
 function (m::RatesModel)(θ)
     θ′ = merge(θ, [k=>findfield(m.params, k) for k in m.fixed])
-    RatesModel(m.params(θ′), m.fixed, m.trans)
+    RatesModel(m.params(θ′), m.fixed, m.trans, m.rootprior)
 end
 
 function findfield(p::P, f) where {P<:Params{T} where T}

@@ -4,10 +4,11 @@ using DelimitedFiles, Random, Distributions
 Random.seed!(624)
 
 # NOTE still needs NaN-safe mode enabled sometimes (when κ = 0 for instance)...
+const datadir = joinpath(@__DIR__, "../example")
 
 @testset "CountDAG" begin
-    X, s = readdlm("example/9dicots-f01-25.csv", ',', Int, header=true)
-    tree = readnw(readline("example/9dicots.nw"))
+    X, s = readdlm(joinpath(datadir, "9dicots-f01-25.csv"), ',', Int, header=true)
+    tree = readnw(readline(joinpath(datadir, "9dicots.nw")))
     dag, bound = CountDAG(X, s, tree)
     g = dag.graph
     @test outdegree(g, nv(g)) == length(unique(eachrow(X)))
@@ -18,8 +19,8 @@ Random.seed!(624)
 end
 
 @testset "Profiles" begin
-    X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
-    tree = readnw(readline("example/9dicots.nw"))
+    X, s = readdlm(joinpath(datadir, "9dicots-f01-100.csv"), ',', Int, header=true)
+    tree = readnw(readline(joinpath(datadir, "9dicots.nw")))
     dag, bound = CountDAG(X, s, tree)
     for i=1:10
         matrix, bound = BirdDad.ProfileMatrix(X, s, tree)

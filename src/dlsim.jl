@@ -28,7 +28,7 @@ end
     randtree(tree, model::RatesModel)
 
 Simple recursive tree simulator for DL(WGD) model with a homogeneous
-rate for each branch. Currently assumes the Geometric prior on
+rate for each branch. Currently assumes the shifted geometric prior on
 the number of lineages at the root. Note that gain events are
 not simulated, so if a DLG model is provided, the gain rate will
 be ignored.
@@ -159,3 +159,72 @@ function randprofile(model, leaves)
     walk(getroot(model), xₒ)
     return profile
 end
+
+# Simulate profiles directly for Linear BDPs
+# I think this is much more to the point (but does not simulate trees)
+function simulate_profile(m)
+    function walk(n, X=nothing)
+        # simulate current edge
+        θ  = getθ(m.rates, n)
+        X′ = isnothing(X) ? 
+            randroot(m.rates.rootprior, θ) : 
+            randedge(X, θ, distance(n)) 
+        if isleaf(n) 
+            profile[name(n)] = X′
+            return X′ 
+        end
+        next = map(c->walk(c, X′), children(n))
+        vcat(X′, next...)
+    end
+    f = getcondition(m)
+    profile = Dict{String,Int64}()
+    while !f(profile)
+        full = walk(root(m))
+    end
+    return dict2tuple(profile)
+end
+
+# Should use dispatch on a type which stores those clades...
+function getcondition(m)
+    o = getroot(m)
+    if m.cond == :root
+        clades = [name.(getleaves(o[1])), name.(getleaves(o[2]))]
+    elseif m.cond == :nowhere
+        clades = [name.(getleaves(o))]
+    else  # no conditioning
+        clades = []
+    end
+    x->length(x) == 0 ? false : 
+        length(clades) == 0 ? true : 
+            all([any([x[sp] > 0 for sp in c]) for c in clades])
+end
+
+dict2tuple(d) = (;[Symbol(k)=>v for (k,v) in d]...)
+
+# only for shifted geometric and geometric priors
+randroot(prior::Symbol, θ) = rand(Geometric(θ.η)) + (prior == :shifted ? 1 : 0)
+
+function randedge(X, θ, t)
+    @unpack λ, μ, κ = θ
+    (X == 0 && κ == zero(t)) && return 0
+    r = κ/λ
+    # p ≡ extinction probability of a single lineage
+    # q ≡ probability of change conditional on non-extinction
+    if λ ≈ μ
+        p = q = λ*t/(one(t)+λ*t)
+    else
+        p = μ*(1.0 - exp((λ-μ)*t))/(μ - λ*exp((λ-μ)*t))
+        q = (λ/μ)*p
+    end
+    #@info "params" X p q r
+    X′ = 0
+    for i=1:X  # birth-death
+        u = rand()
+        X′+= u < p ? 0 : rand(Geometric(one(q)-q)) + 1
+    end  
+    if r > zero(r)  # gain
+        X′+= rand(NegativeBinomial(r, one(q)-q))
+    end
+    return X′
+end
+

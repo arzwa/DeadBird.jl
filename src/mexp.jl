@@ -1,6 +1,6 @@
-# From: https://github.com/sdewaele/GenericLinearAlgebra.jl/commit/53133b5a5f210cb72de73f7cee71a9f0ca2cd362
+# From:
+# https://github.com/sdewaele/GenericLinearAlgebra.jl/commit/53133b5a5f210cb72de73f7cee71a9f0ca2cd362
 # This matrix exponential works with AD, (I hope correctly)
-
 # Julia matrix exponential
 
 using LinearAlgebra

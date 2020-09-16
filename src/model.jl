@@ -1,4 +1,5 @@
 # Split this file in model.jl and linear.jl
+
 # hate the name, but'it's barely used (the name that is)
 struct NodeProbs{T}
     name::String  # leaf name/wgd/wgt ...
@@ -37,6 +38,10 @@ mutable struct PhyloBDP{T,M,I} <: DiscreteMultivariateDistribution
     order::Vector{ModelNode{T,I}}
     bound::Int
     cond ::Symbol
+end
+
+struct ModelArray{M} <: DiscreteMultivariateDistribution
+    models::Vector{M}
 end
 
 function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;

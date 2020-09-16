@@ -21,7 +21,7 @@ nonlinearprofile(p, bound) = p(bound)
 
 ProfileMatrix(df, tree) = ProfileMatrix(Matrix(df), names(df), tree)
 function ProfileMatrix(matrix::Matrix, names, tree, T=Float64)
-    colindex = Dict(s=>i for (i,s) in enumerate(names))
+    colindex = Dict(string(s)=>i for (i,s) in enumerate(names))
     N = size(matrix)[1]
     nodes = postwalk(tree)
     profile = zeros(Int, N, length(nodes))
@@ -49,6 +49,10 @@ nfamilies(P::ProfileMatrix) = size(P)[1]
 
 Distributions.logpdf(m::PhyloBDP{T}, x::ProfileMatrix) where T = loglikelihood!(x(T), m)
 Distributions.logpdf(m::PhyloBDP{T}, x::Profile) where T = loglikelihood!(x(T), m)
+Distributions.logpdf(M::ModelArray{<:PhyloBDP{T}}, x::ProfileMatrix) where T = 
+    loglikelihood!(x(T), M)
+Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
+Distributions.loglikelihood(M::ModelArray, x) = logpdf(M, x)
 
 # This is shared over both linear/nonlinear models
 function loglikelihood!(P::ProfileMatrix{T,I}, model) where {T,I}
@@ -57,5 +61,15 @@ function loglikelihood!(P::ProfileMatrix{T,I}, model) where {T,I}
         ℓs[i] = loglikelihood!(P[i], model, false)
     end
     ℓ = sum(ℓs) - length(ℓs)*conditionfactor(model)
+    isfinite(ℓ) ? ℓ : -Inf
+end
+
+function loglikelihood!(P::ProfileMatrix{T,I}, M::ModelArray) where {T,I}
+    ℓs = zeros(T, nfamilies(P))
+    Threads.@threads for i=1:nfamilies(P)
+        ℓs[i] = loglikelihood!(P[i], M.models[i], false) - 
+            conditionfactor(M.models[i])
+    end
+    ℓ = sum(ℓs)
     isfinite(ℓ) ? ℓ : -Inf
 end

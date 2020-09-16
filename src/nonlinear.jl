@@ -1,17 +1,14 @@
-# Truncated matrix approaches for nonlinear birth-death process models
-# with computations using a classical pruning algorithm.
-# The likelihood for DL, DLG and *WGD models can be computed using the CM algorithm
-# but for more complicated models, we often need to truncate the state space
-# and perform matrix exponentiation.
-# This is because the CM algorithm relies on the underlying process being
-# a proper branching process,
-# i.e. where evolution of each particle is independent of the other particles.
-# The `PhyloBDP` struct can be used directly for these purposes,
-# we have the W field in the `ModelNode` object to store
-# the transition probability matrices.
-# So we could just dispatch on the `RatesModel` to know whether we need
-# the truncated state space models or whether we can use the CM algorithm.
-# non-linear models
+# Truncated matrix approaches for nonlinear birth-death process models with
+# computations using a classical pruning algorithm.  The likelihood for DL, DLG
+# and *WGD models can be computed using the CM algorithm but for more
+# complicated models, we often need to truncate the state space and perform
+# matrix exponentiation.  This is because the CM algorithm relies on the
+# underlying process being a proper branching process, i.e. where evolution of
+# each particle is independent of the other particles.  The `PhyloBDP` struct
+# can be used directly for these purposes, we have the W field in the
+# `ModelNode` object to store the transition probability matrices.  So we could
+# just dispatch on the `RatesModel` to know whether we need the truncated state
+# space models or whether we can use the CM algorithm.  non-linear models
 function setmodel!(model::PhyloBDP)
     @unpack order, rates = model
     for n in order
@@ -25,9 +22,8 @@ function setW!(n::ModelNode{T}, rates) where T
     n.data.W .= _exp(Q*distance(n))
 end
 
-# NOTE: for non-linear models the pgf formulation can't be used
-# (because ℙ{extinction} = F(0) is only valid for processes
-# with the branching property)
+# NOTE: for non-linear models the pgf formulation can't be used (because
+# ℙ{extinction} = F(0) is only valid for processes with the branching property)
 """
 Compute relevant extinction probabilities.
     A ≡ {extinction  left from root}
@@ -44,12 +40,12 @@ function nonextinctfromrootcondition(model::PhyloBDP{T}) where T
     end
     o = root(model)
     # ℓϵroot probability of an extinct profile given the prior on the root
-    ϵroot = exp(∫rootgeometric(zerop.ℓ[id(o)], η))
+    ϵroot = exp(∫rootshiftgeometric(zerop.ℓ[id(o)], η))
     setϵ!(o, 2, exp(zerop.ℓ[id(o)][2]))  # this is correct
     ϵchildren = map(children(o)) do c
         𝑃 = c.data.W
         ϵ′ = 𝑃 * exp.(zerop.ℓ[id(c)])  # extinction Ps at beginning of edge
-        ϵ = exp(∫rootgeometric(log.(ϵ′), η))
+        ϵ = exp(∫rootshiftgeometric(log.(ϵ′), η))
         # this [π * 𝑃 * ℓ'] with π the geometric pdf (row vector)
         setϵ!(c, 1, ϵ′[2])  # this is correct
         ϵ
@@ -74,7 +70,7 @@ function acclogpdf(dag::CountDAG, model)
     ϵ = log(probify(getϵ(root(model), 2)))
     ℓ = 0.
     for n in outneighbors(graph, nv(graph))
-        ℓ += ndata[n].count*∫rootgeometric(parts[n], η)
+        ℓ += ndata[n].count*∫rootshiftgeometric(parts[n], η)
     end
     return ℓ
 end
@@ -105,7 +101,7 @@ function loglikelihood!(p::Profile, model, condition=true)
     for n in model.order
         prune!(p, n, model)
     end
-    ℓ = ∫rootgeometric(p.ℓ[1], η)
+    ℓ = ∫rootshiftgeometric(p.ℓ[1], η)
     if condition
         ℓ -= conditionfactor(model)
     end
@@ -117,7 +113,7 @@ end
 # so we just need to multiply the likelihood values at the root
 # by the corresponding prior probabilities (renormalized for finite support)
 # and do the sum.
-function ∫rootgeometric(ℓ, η)
+function ∫rootshiftgeometric(ℓ, η)
     n = length(ℓ)
     # pdf(Geometric) is very fast recursively implemented in Distributions.jl
     p = pdf.(Geometric(η), 1:n-1)
