@@ -1,8 +1,8 @@
 # Likelihood and other methods specific to the linear model
-# Actually the matter is probably more about the branching property
-# than about linearity, e.g. rates that grow quadratic with the population size
-# might also admit a Csuros-Miklos like algorithm.
-# At any rate, only methods for the linear BDP are implemented here.
+# Actually the matter is probably more about the branching property than about
+# linearity, e.g. rates that grow quadratic with the population size might also
+# admit a Csuros-Miklos like algorithm.  At any rate, only methods for the
+# linear BDP are implemented here.
 
 # shorthand alias
 const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}

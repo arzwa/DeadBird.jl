@@ -102,24 +102,25 @@ end
 """
     DLG{T}
 
-Simple branch-wise rates duplication-loss and gain model. Gain (κ) is
-assumed to be tree-wide. This assumes a shifted geometric distribution
-on the family size at the root with mean 1/η.
+Simple branch-wise rates duplication-loss and gain model.  The prior
+distribution on the root is either geometric or shifted geometric with
+parameter η,
 """
 @with_kw struct DLG{T} <: Params{T}
     λ::Vector{T}
     μ::Vector{T}
-    κ::T = 0.
+    κ::Vector{T}
     η::T = 0.66
 end
 
-getθ(m::DLG, node) = (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=m.κ, η=m.η)
+getθ(m::DLG, node) = (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=exp.(m.κ[id(node)]), η=m.η)
 trans(m::DLG) = (
     λ=as(Array, asℝ, length(m.λ)),
     μ=as(Array, asℝ, length(m.λ)),
-    κ=asℝ₊, η=as𝕀)
-(::DLG)(θ) = DLG(; λ=θ.λ, μ=θ.μ, κ=eltype(θ.λ)(θ.κ), η=eltype(θ.λ)(θ.η))
-Base.:*(m::DLG, x::Real) = DLG(λ=m.λ.*x, μ=m.μ.*x, κ=m.κ, η=m.η)
+    κ=as(Array, asℝ, length(m.λ)), 
+    η=as𝕀)
+(::DLG)(θ) = DLG(; λ=θ.λ, μ=θ.μ, κ=θ.κ, η=eltype(θ.λ)(θ.η))
+Base.:*(m::DLG, x::Real) = DLG(λ=m.λ.*x, μ=m.μ.*x, κ=m.κ.*x, η=m.η)
 
 @with_kw struct DLGWGD{T} <: Params{T}
     λ::Vector{T}
