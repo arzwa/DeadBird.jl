@@ -11,6 +11,7 @@
 # require a more general approach, let's keep that for later and now just work
 # with an if-else condition, not using dispatch on some rootprior distribution
 # type
+# TODO: promotion issues when having vector-valued parameters fixed.
 
 function iswgd end
 function wgdid end
@@ -101,7 +102,6 @@ end
 
 """
     DLG{T}
-
 Simple branch-wise rates duplication-loss and gain model.  The prior
 distribution on the root is either geometric or shifted geometric with
 parameter η,
@@ -113,12 +113,18 @@ parameter η,
     η::T = 0.66
 end
 
-getθ(m::DLG, node) = (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=exp.(m.κ[id(node)]), η=m.η)
+getθ(m::DLG, node) = (
+    λ=exp(m.λ[id(node)]), 
+    μ=exp(m.μ[id(node)]), 
+    κ=exp(m.κ[id(node)]), 
+    η=m.η)
+
 trans(m::DLG) = (
     λ=as(Array, asℝ, length(m.λ)),
     μ=as(Array, asℝ, length(m.λ)),
     κ=as(Array, asℝ, length(m.λ)), 
     η=as𝕀)
+
 (::DLG)(θ) = DLG(; λ=θ.λ, μ=θ.μ, κ=θ.κ, η=eltype(θ.λ)(θ.η))
 Base.:*(m::DLG, x::Real) = DLG(λ=m.λ.*x, μ=m.μ.*x, κ=m.κ.*x, η=m.η)
 
@@ -126,27 +132,28 @@ Base.:*(m::DLG, x::Real) = DLG(λ=m.λ.*x, μ=m.μ.*x, κ=m.κ.*x, η=m.η)
     λ::Vector{T}
     μ::Vector{T}
     q::Vector{T}
-    κ::T = 0.
+    κ::Vector{T}
     η::T = 0.66
 end
 
 function getθ(m::DLGWGD, node)
     return if iswgd(node)
         c = nonwgdchild(node)
-        (λ=exp(m.λ[id(c)]), μ=exp(m.μ[id(c)]), q=m.q[wgdid(node)], κ=m.κ)
+        (λ=exp(m.λ[id(c)]), μ=exp(m.μ[id(c)]), q=m.q[wgdid(node)], κ=exp(m.κ[id(c)]))
     else
-        (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=m.κ, η=m.η)
+        (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=exp(m.κ[id(node)]), η=m.η)
     end
 end
 
 trans(m::DLGWGD) = (
     λ=as(Array, asℝ, length(m.λ)),
     μ=as(Array, asℝ, length(m.λ)),
+    κ=as(Array, asℝ, length(m.λ)),
     q=as(Array, as𝕀, length(m.q)),
-    κ=asℝ₊, η=as𝕀)
+    η=as𝕀)
 
 (::DLGWGD)(θ) = DLGWGD(;
-    λ=θ.λ, μ=θ.μ, q=θ.q, κ=eltype(θ.λ)(θ.κ), η=eltype(θ.λ)(θ.η))
+    λ=θ.λ, μ=θ.μ, q=θ.q, κ=θ.κ, η=eltype(θ.λ)(θ.η))
 
 const LinearModel = RatesModel{T,V} where
     {T,V<:Union{ConstantDLG,DLG,DLGWGD,ConstantDLGWGD}}
