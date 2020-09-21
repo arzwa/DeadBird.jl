@@ -22,3 +22,20 @@ tre.phylo4d = read.simmap(text=tre.string)
 dat = data.frame(A=c(2,2), B=c(2,2), C=c(3,3), D=c(4,4));
 a = processInput(tre.phylo4d)
 logLik_CsurosMiklos(log(c(.2,.3)), nLeaf=4, nFamily=2, a$phyloMat, dat, mMax=11, a$wgdTab, a$edgeOrder)
+
+
+# Drosophila
+t = read.simmap("drosophila/tree.simmap")
+d = read.csv("drosophila/counts-oib.csv")
+a = processInput(t)
+
+out = logLik_CsurosMiklos(log(c(1., 1.)), 
+                    nLeaf=12, 
+                    nFamily=10, 
+                    a$phyloMat, 
+                    d[1:10,], 
+                    mMax=743, 
+                    a$wgdTab, 
+                    a$edgeOrder)
+
+

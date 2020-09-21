@@ -124,6 +124,28 @@ _bin(n, k) = n > 60 ?
     exp(logfact_stirling(n) - logfact_stirling(k) - logfact_stirling(n - k)) :
     binomial(n, k)
 
+# Root integration
+function ∫root(p, rates, ϵ) 
+    @unpack η = rates.params
+    if rates.rootprior == :shifted 
+        ℓ = ∫rootshiftgeometric(p, η, ϵ)
+    elseif rates.rootprior == :geometric
+        ℓ = ∫rootgeometric(p, η, ϵ)
+    else
+        throw("$(rates.rootprior) not implemented!")
+    end
+end
+
+# We could work with types as well and use dispatch...
+conditionfactor(model) =
+    if model.cond == :root
+        nonextinctfromrootcondition(model)
+    elseif model.cond == :nowhere
+        extinctnowherecondition(model)
+    else
+        0.
+end
+
 """
     ∫rootshiftgeometric(ℓ, η, ϵ)
 
@@ -220,14 +242,32 @@ function sitepatterns_ℓ(dag, model, nodes)
     [∫root(parts[n], model.rates, ϵ) for n in nodes]
 end
 
+# Likelihood using the Profile(Matrix) data structure
+# NOTE: condition is optional, because for a full matrix it is of course
+# redundant to compute the same condition factor many times.
+# Nevertheless, we still want to have loglikelihood(profile)
+# to give the correct loglikelihood value for a single profile as well.
+function loglikelihood!(p::Profile,
+        model::LPhyloBDP{T},
+        condition=true) where T
+    @unpack η = getθ(model.rates, root(model))
+    for n in model.order
+        cm!(p, n, model)
+    end
+    ϵ = log(probify(getϵ(root(model), 2)))
+    ℓ = ∫root(p.ℓ[1], model.rates, ϵ)
+    if condition
+        ℓ -= conditionfactor(model)
+    end
+    isfinite(ℓ) ? ℓ : -Inf
+end
+
 """
     cm!(dag, node, model)
 
-Compute the conditional survival probabilities at `n`
-using the Csuros & Miklos (2009) algorithm.
-This assumes the `model` already contains
-the computed transition probability matrices `W`
-and that the partial loglikelihood vectors
+Compute the conditional survival probabilities at `n` using the Csuros & Miklos
+(2009) algorithm.  This assumes the `model` already contains the computed
+transition probability matrices `W` and that the partial loglikelihood vectors
 for the child nodes in the DAG are already computed and available.
 """
 @inline function cm!(dag::CountDAG{T}, n, model) where T
@@ -254,8 +294,33 @@ for the child nodes in the DAG are already computed and available.
     parts[n] = A[:,end]
 end
 
+# For the Profile struct
+@inline function cm!(profile::Profile{T}, n, model) where T
+    # n is a node from the model
+    @unpack x, ℓ = profile
+    bound = length(ℓ[id(n)])
+    if isleaf(n)  # leaf case
+        ℓ[id(n)][x[id(n)]+1] = zero(T)
+        return
+    end
+    kids = children(n)
+    kmax = [x[id(k)] for k in kids]
+    kcum = cumsum([0 ; kmax])
+    keps = [getϵ(c, 1) for c in kids]
+    ϵcum = cumprod([1.; keps])
+    B = fill(T(-Inf), (bound, kcum[end]+1, length(kmax)))
+    A = fill(T(-Inf), (kcum[end]+1, length(kmax)))
+    for (i, kid) in enumerate(kids)
+        @unpack W = model[id(kid)].data
+        cm_inner!(i, A, B, W, ℓ[id(kid)],
+            ϵcum, kcum, kmax[i], log(keps[i]))
+    end
+    ℓ[id(n)] = A[:,end]
+end
+
 # this can and should be shared with a non-DAG implementation
 @inline function cm_inner!(i, A, B, W, L, ϵcum, kcum, mi, lϵ₁)
+    #@info "cm_inner!" i kcum ϵcum mi lϵ₁ size(A) size(B) size(W)
     @inbounds B[1:mi+1, 1, i] = log.(W[1:mi+1, 1:mi+1] * exp.(L))
     for t=1:kcum[i], s=0:mi  # this is 0...M[i-1] & 0...mi
         @inbounds B[s+1,t+1,i] = s == mi ?
@@ -282,68 +347,6 @@ end
     end
 end
 
-# Methods using the Profile(Matrix) data structure
-# NOTE: condition is optional, because for a full matrix it is of course
-# redundant to compute the same condition factor many times.
-# Nevertheless, we still want to have loglikelihood(profile)
-# to give the correct loglikelihood value for a single profile as well.
-function loglikelihood!(p::Profile,
-        model::LPhyloBDP{T},
-        condition=true) where T
-    @unpack η = getθ(model.rates, root(model))
-    ϵ = log(probify(getϵ(root(model), 2)))
-    for n in model.order
-        cm!(p, n, model)
-    end
-    ℓ = ∫root(p.ℓ[1], model.rates, ϵ)
-    if condition
-        ℓ -= conditionfactor(model)
-    end
-    isfinite(ℓ) ? ℓ : -Inf
-end
-
-function ∫root(p, rates, ϵ) 
-    @unpack η = rates.params
-    if rates.rootprior == :shifted 
-        ℓ = ∫rootshiftgeometric(p, η, ϵ)
-    elseif rates.rootprior == :geometric
-        ℓ = ∫rootgeometric(p, η, ϵ)
-    else
-        throw("$(rates.rootprior) not implemented!")
-    end
-end
-
-@inline function cm!(profile::Profile{T}, n, model) where T
-    # n is a node from the model
-    @unpack x, ℓ = profile
-    bound = length(x)
-    if isleaf(n)  # leaf case
-        return ℓ[id(n)][x[id(n)]+1] = zero(T)
-    end
-    kids = children(n)
-    kmax = [x[id(k)] for k in kids]
-    kcum = cumsum([0 ; kmax])
-    keps = [getϵ(c, 1) for c in kids]
-    ϵcum = cumprod([1.; keps])
-    B = fill(T(-Inf), (bound, kcum[end]+1, length(kmax)))
-    A = fill(T(-Inf), (kcum[end]+1, length(kmax)))
-    for (i, kid) in enumerate(kids)
-        @unpack W = model[id(kid)].data
-        cm_inner!(i, A, B, W, ℓ[id(kid)],
-            ϵcum, kcum, kmax[i], log(keps[i]))
-    end
-    ℓ[id(n)] = A[:,end]
-end
-
-# We could work with types as well and use dispatch...
-conditionfactor(model) =
-    if model.cond == :root
-        nonextinctfromrootcondition(model)
-    elseif model.cond == :nowhere
-        extinctnowherecondition(model)
-    else
-        0.
-end
 
 # This is the non-extinction in both clades stemming from the root condition
 # XXX: assumes the geometric prior!
@@ -352,18 +355,6 @@ end
 function nonextinctfromrootcondition(model::LPhyloBDP)
     @unpack η = getθ(model.rates, model[1])
     lη = log(η)
-    # XXX: This was not correct I believe? it computes ℙ{not extinct from root} as
-    # if there was independence but ℙ{not ext left and not ext right} = ℙ{A,B} !=
-    # ℙ{A}ℙ{B} = (1- ℙ{extinct left})(1 - ℙ{extinct right})!
-    # cf = zero(lη)
-    # for c in children(model[1])
-    #     ϵ = geomϵp(log(getϵ(c, 1)), lη)
-    #     if ϵ > zero(lη)
-    #         @warn "Invalid probability at `condition`, returning -Inf" ϵ
-    #         return -Inf
-    #     end
-    #     cf += log1mexp(ϵ)
-    # end
     o  = root(model)
     ϵo = exp(geomϵp(log(getϵ(o, 2)), lη))  # XXX some ugly log(exp(log(exp...)))
     ϵc = mapreduce(c->exp(geomϵp(log(getϵ(c, 1)), lη)), +, children(o))
@@ -373,33 +364,5 @@ end
 
 geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)
 
-# XXX: see pgf technique for the stuff below! (implemented in Whale)
-# NOTE: experimental, will not work OOTB with WGDs. Also, will not work with gain model. All doable though. First I was trying to compute the probability of extinction somewhere, but the probability of extinction nowhere turned out to be more easily calculated in a preorder, much like one would simulate from a CTMC time with finite state space. This is of course approximate!
-# function extinctnowherecondition(m::PhyloBDP{T}, bound=m.bound*2) where T
-#     𝑃 = zeros(T, bound, length(m.order))
-#     p = one(T)
-#     function walk(n)
-#         _pvec!(𝑃, m, n)
-#         for c in children(n) walk(c) end
-#         if isleaf(n)
-#             p *= sum(𝑃[2:end, id(n)])
-#         end
-#         return
-#     end
-#     walk(root(m))
-#     return log(probify(p))
-# end
-#
-# function _pvec!(𝑃, model, n)
-#     if isroot(n)
-#         @unpack η = getθ(model.rates, n)
-#         𝑃[:,id(n)] = [0. ; pdf.(Geometric(η), 0:size(𝑃)[1]-2)]
-#     else
-#         @unpack λ, μ = getθ(model.rates, n)
-#         t = distance(n)
-#         bound = size(𝑃)[1]
-#         matrix = [tp(i, j, t, λ, μ) for i=0:bound-1, j=0:bound-1]
-#         p = matrix' * 𝑃[:,id(parent(n))]
-#         𝑃[:,id(n)] .= p /sum(p)
-#     end
-# end
+# XXX: see pgf technique (implemented in Whale) for nowhere extinct
+# condition...

@@ -21,7 +21,7 @@ function leafpmf(df, xmax)
     function f(column)
         xs = counts(column, 0:xmax)
         exceeding = length(filter(x->x>xmax, column))
-        [xs ; exceeding]
+        [xs ; exceeding] ./ length(column)
     end
     Dict(col=>f(df[!,col]) for col in names(df))
 end

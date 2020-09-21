@@ -1,34 +1,55 @@
 using Pkg; Pkg.activate(@__DIR__)
 using Test, LightGraphs, NewickTree, BirdDad, TransformVariables
-using DelimitedFiles, Random, Distributions
+using DelimitedFiles, Random, Distributions, CSV
 Random.seed!(624)
 
+# change DelimitedFiles -> CSV usage
 # NOTE still needs NaN-safe mode enabled sometimes (when κ = 0 for instance)...
 const datadir = joinpath(@__DIR__, "../example")
+readtree = readnw ∘ readline
 
 @testset "CountDAG" begin
-    X, s = readdlm(joinpath(datadir, "9dicots-f01-25.csv"), ',', Int, header=true)
-    tree = readnw(readline(joinpath(datadir, "9dicots.nw")))
-    dag, bound = CountDAG(X, s, tree)
+    df = CSV.read(joinpath(datadir, "9dicots-f01-25.csv"))
+    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
     g = dag.graph
-    @test outdegree(g, nv(g)) == length(unique(eachrow(X)))
-    @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(X)[1]
+    @test outdegree(g, nv(g)) == length(unique(eachrow(df)))
+    @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(df)[1]
     r = RatesModel(ConstantDLG(λ=0.1, μ=.12, κ=0.0, η=0.9))
-    m = PhyloBDP(r, tree, bound)
+    m = PhyloBDP(r, tr, bound)
     @test BirdDad.loglikelihood!(dag, m) ≈ -251.0360331682765
 end
 
 @testset "Profiles" begin
-    X, s = readdlm(joinpath(datadir, "9dicots-f01-100.csv"), ',', Int, header=true)
-    tree = readnw(readline(joinpath(datadir, "9dicots.nw")))
-    dag, bound = CountDAG(X, s, tree)
+    df = CSV.read(joinpath(datadir, "9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
     for i=1:10
-        matrix, bound = BirdDad.ProfileMatrix(X, s, tree)
+        matrix, bound = BirdDad.ProfileMatrix(df, tr)
         rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
-        model = PhyloBDP(rates(randn(2)), tree, bound)
+        model = PhyloBDP(rates(randn(2)), tr, bound)
         l1 = BirdDad.loglikelihood!(matrix, model)
         l2 = BirdDad.loglikelihood!(dag, model)
         @test l1 ≈ l2
+    end
+end
+
+@testset "Drosophila data, DAG vs. matrix" begin
+    import BirdDad: loglikelihood!
+    df = CSV.read(joinpath(datadir, "drosophila/counts-oib.csv"))
+    df = df[1:end,:]
+    tr = readtree(joinpath(datadir, "drosophila/tree.nw"))
+    dag, bound = CountDAG(df, tr)
+    mat, bound = ProfileMatrix(df, tr)
+    rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
+    model = PhyloBDP(rates, tr, bound)
+    for i=1:10
+        r = exp(randn())
+        m = model((λ=r, μ=r, η=rand()))
+        l1 = loglikelihood!(dag, m)
+        l2 = loglikelihood!(mat, m)
+        @info l1, l2
+        @test isapprox(l1, l2, atol=1e-5)
     end
 end
 
