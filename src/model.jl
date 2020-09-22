@@ -79,13 +79,17 @@ NewickTree.getroot(m::PhyloBDP) = root(m)
 # maybe make this a macro, so that we can show the function call?
 const PTOL = 1e-9  # tolerance for probabilities
 function probify(p)
-    return if p > one(p)
-        !(isapprox(p, one(p), atol=PTOL)) && @warn "probability $p > 1, set to 1"
-        one(p)
-    elseif p < zero(p)
-        !(isapprox(p, zero(p), atol=PTOL)) && @warn "probability $p < 0, set to 0"
-        zero(p)
-    else
-        p
-    end
+    p > one(p)  && return one(p)
+    p < zero(p) && return zero(p)
+    return p
+    # @warn doesn't get though Zygote...
+    # return if p > one(p)
+    #     !(isapprox(p, one(p), atol=PTOL)) && @warn "probability $p > 1, set to 1"
+    #     one(p)
+    # elseif p < zero(p)
+    #     !(isapprox(p, zero(p), atol=PTOL)) && @warn "probability $p < 0, set to 0"
+    #     zero(p)
+    # else
+    #     p
+    # end
 end

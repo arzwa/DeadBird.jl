@@ -4,6 +4,12 @@
 # admit a Csuros-Miklos like algorithm.  At any rate, only methods for the
 # linear BDP are implemented here.
 
+# NOTE: when having family-specific rates, we might get a performance boost
+# when considering the node count bound for each family separately. Since
+# the transition probabilities (W) in that case have to be computed for
+# each family separately, it is not useful to compute values up to the 
+# upper bound of the entire matrix for a node in the speices tree...
+
 # shorthand alias
 const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
 
@@ -178,6 +184,26 @@ end
     return p
 end
 
+# This is the non-extinction in both clades stemming from the root condition
+# XXX: assumes the geometric prior!
+# XXX: only for linear model, since it works from the extinction probability
+# for a single lineage and assumes the branching property
+function nonextinctfromrootcondition(model::LPhyloBDP)
+    @unpack η = getθ(model.rates, model[1])
+    lη = log(η)
+    o  = root(model)
+    ϵo = exp(geomϵp(log(getϵ(o, 2)), lη))  # XXX some ugly log(exp(log(exp...)))
+    ϵc = mapreduce(c->exp(geomϵp(log(getϵ(c, 1)), lη)), +, children(o))
+    cf = one(ϵc) - ϵc + ϵo
+    return  (one(cf) > cf > zero(cf) && isfinite(cf)) ? log(cf) : -Inf
+end
+
+geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)
+
+# XXX: see pgf technique (implemented in Whale) for nowhere extinct
+# condition...
+
+
 # Methods using the CountDAG data structure
 """
     loglikelihood!(dag::CountDAG, model::PhyloBDP)
@@ -192,6 +218,7 @@ function loglikelihood!(dag::CountDAG, model::LPhyloBDP{T}) where T
         end
     end
     ℓ = acclogpdf(dag, model) - dag.nfam*conditionfactor(model)
+    #!isfinite(ℓ) && @warn "ℓ not finite"
     isfinite(ℓ) ? ℓ : -Inf
 end
 # NOTE: maybe a distributed approach using SharedArray or DArray
@@ -252,7 +279,7 @@ function loglikelihood!(p::Profile,
         condition=true) where T
     @unpack η = getθ(model.rates, root(model))
     for n in model.order
-        cm!(p, n, model)
+        _cm!(p, n, model)
     end
     ϵ = log(probify(getϵ(root(model), 2)))
     ℓ = ∫root(p.ℓ[1], model.rates, ϵ)
@@ -290,9 +317,26 @@ for the child nodes in the DAG are already computed and available.
         @unpack W = model[ndata[kid].snode].data
         cm_inner!(i, A, B, W, parts[kid],
             ϵcum, kcum, kmax[i], log(keps[i]))
+        #@info "Matrices" B A 
     end
     parts[n] = A[:,end]
+    return B
 end
+
+#function _cm!(dag::CountDAG{T}, n, model) where T
+#    @unpack graph, ndata, parts = dag
+#    kids = outneighbors(graph, n)
+#    for (i, kid) in enumerate(kids)
+#        c = ndata[kid].snode
+#        @unpack W = model[c].data
+#        ℓ = parts[kid]
+#        l = length(ℓ)
+#        ϵ = getϵ(c, 1)
+#        m = ndata[kid].bound
+#        B0 = log.(W[1:l,1:l] * exp.(ℓ))
+#        @info "logB (_cm)" B0
+#    end
+#end
 
 # For the Profile struct
 @inline function cm!(profile::Profile{T}, n, model) where T
@@ -308,6 +352,7 @@ end
     kcum = cumsum([0 ; kmax])
     keps = [getϵ(c, 1) for c in kids]
     ϵcum = cumprod([1.; keps])
+    # B matrix is much too big
     B = fill(T(-Inf), (bound, kcum[end]+1, length(kmax)))
     A = fill(T(-Inf), (kcum[end]+1, length(kmax)))
     for (i, kid) in enumerate(kids)
@@ -317,6 +362,11 @@ end
     end
     ℓ[id(n)] = A[:,end]
 end
+# Benchmark on family 1 of the drosophila data
+# commit 227ff5e9ea601f21631aca4b911924db13ebcc24
+# julia> @btime cm!(mat[1], model[4], model);
+#  213.491 μs (49 allocations: 94.61 KiB)
+
 
 # this can and should be shared with a non-DAG implementation
 @inline function cm_inner!(i, A, B, W, L, ϵcum, kcum, mi, lϵ₁)
@@ -348,21 +398,84 @@ end
 end
 
 
-# This is the non-extinction in both clades stemming from the root condition
-# XXX: assumes the geometric prior!
-# XXX: only for linear model, since it works from the extinction probability
-# for a single lineage and assumes the branching property
-function nonextinctfromrootcondition(model::LPhyloBDP)
-    @unpack η = getθ(model.rates, model[1])
-    lη = log(η)
-    o  = root(model)
-    ϵo = exp(geomϵp(log(getϵ(o, 2)), lη))  # XXX some ugly log(exp(log(exp...)))
-    ϵc = mapreduce(c->exp(geomϵp(log(getϵ(c, 1)), lη)), +, children(o))
-    cf = one(ϵc) - ϵc + ϵo
-    return  (one(cf) > cf > zero(cf) && isfinite(cf)) ? log(cf) : -Inf
+# Major refactor
+# Somwehat more intelligle, and doesn't allocate large matrices.  However, it's
+# only marginally faster for both likelihood and gradient.
+@inline function _cm!(profile::Profile{T}, n, model) where T
+    # n is a node from the model
+    @unpack x, ℓ = profile
+    bound = length(ℓ[id(n)])
+    # if the bound is 0 or we're at a leaf, there is only 
+    # one possible state.
+    if isleaf(n) || x[id(n)] == 0  # leaf case
+        ℓ[id(n)][x[id(n)]+1] = zero(T)
+        return
+    end
+    kids = children(n)
+    kmax = [x[id(k)] for k in kids]
+    kcum = cumsum([0 ; kmax])
+    keps = [getϵ(c, 1) for c in kids]
+    ϵcum = cumprod([1.; keps])
+    # not sure if correct for polytomies...
+    A = nothing
+    for (i, kid) in enumerate(kids)
+        @unpack W = model[id(kid)].data
+        lϵ₁ = log(keps[i])
+        B = cm_getB(T, W, ℓ[id(kid)], kcum[i], 
+                    kcum[i+1], kmax[i], lϵ₁)
+        A = i == 1 ? 
+            cm_getA1(T, B, kcum[2], ϵcum[2], lϵ₁) : 
+            cm_getAi(T, B, A, kcum[i], kcum[i+1], 
+                     ϵcum[i], ϵcum[i+1], kmax[i], lϵ₁)
+        @info "matrices" n kid B A
+    end
+    ℓ[id(n)] = A
+end
+# julia> @btime _cm!(mat[1], model[4], model);
+#  208.380 μs (50 allocations: 50.67 KiB)
+
+# @inbounds matters quite a lot to performance! but beware when 
+# changing stuff...
+@inline function cm_getB(T, W, L, k1, k2, mi, lϵ₁)
+    B = fill(T(-Inf), (k2-k1+1, k2+1))
+    @inbounds B[:, 1] = log.(W[1:mi+1, 1:mi+1] * exp.(L))
+    for t=1:k1, s=0:mi  # this is 0...M[i-1] & 0...mi
+        @inbounds B[s+1,t+1] = s == mi ?
+            B[s+1,t] + lϵ₁ : logaddexp(B[s+2,t], lϵ₁+B[s+1,t])
+    end
+    # XXX If we truncate smart (relative to largest value), 
+    # we could avoid NaN issues in the gradient...
+    # B[B .< -500.] .= -Inf
+    Bmax = maximum(B)
+    B[B .< 5*Bmax] .= -Inf
+    return B
 end
 
-geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)
+@inline function cm_getA1(T, B, k2, ϵ2, lϵ₁)
+    A₁ = fill(T(-Inf), k2+1)
+    l1me = log(probify(one(lϵ₁) - ϵ2))
+    for n=0:k2  # this is 0 ... M[i]
+        @inbounds A₁[n+1] = B[n+1,1] - n*l1me
+    end
+    return A₁
+end
 
-# XXX: see pgf technique (implemented in Whale) for nowhere extinct
-# condition...
+@inline function cm_getAi(T, B, A, k1, k2, ϵ1, ϵ2, mi, lϵ₁)
+    Aᵢ = fill(T(-Inf), k2+1)
+    p = probify(ϵ1)
+    l1me = log(probify(one(lϵ₁) - ϵ2))
+    for n=1:k2
+        tmax = min(k1, n)
+        tmin = max(n-mi, 0)
+        for t=tmin:tmax
+            s = n-t
+            @inbounds lp = binomlogpdf(n, p, s) + A[t+1] + B[s+1,t+1]
+            @inbounds Aᵢ[n+1] = logaddexp(Aᵢ[n+1], lp)
+        end
+    end
+    for n=0:k2  # this is 0 ... M[i]
+        Aᵢ[n+1] -= n*l1me
+    end
+    return Aᵢ
+end
+

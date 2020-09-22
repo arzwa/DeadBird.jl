@@ -1,6 +1,7 @@
 BirdDad
 
-This is a reimplementation of the core functionalities previousy implemented in the `Beluga` library.
+This is a reimplementation of the core functionalities previousy implemented in
+the `Beluga` library.
 
 ## Maximum-likelihood estimation
 

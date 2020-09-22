@@ -51,7 +51,7 @@ Distributions.logpdf(m::PhyloBDP{T}, x::ProfileMatrix) where T = loglikelihood!(
 Distributions.logpdf(m::PhyloBDP{T}, x::Profile) where T = loglikelihood!(x(T), m)
 Distributions.logpdf(M::ModelArray{<:PhyloBDP{T}}, x::ProfileMatrix) where T = 
     loglikelihood!(x(T), M)
-#Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
+Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
 Distributions.loglikelihood(M::ModelArray, x) = logpdf(M, x)
 
 # This is shared over both linear/nonlinear models

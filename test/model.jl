@@ -1,9 +1,8 @@
 using Pkg; Pkg.activate(@__DIR__)
 using Test, LightGraphs, NewickTree, BirdDad, TransformVariables
-using DelimitedFiles, Random, Distributions, CSV
+using Random, Distributions, CSV
 Random.seed!(624)
 
-# change DelimitedFiles -> CSV usage
 # NOTE still needs NaN-safe mode enabled sometimes (when κ = 0 for instance)...
 const datadir = joinpath(@__DIR__, "../example")
 readtree = readnw ∘ readline
@@ -37,7 +36,6 @@ end
 @testset "Drosophila data, DAG vs. matrix" begin
     import BirdDad: loglikelihood!
     df = CSV.read(joinpath(datadir, "drosophila/counts-oib.csv"))
-    df = df[1:end,:]
     tr = readtree(joinpath(datadir, "drosophila/tree.nw"))
     dag, bound = CountDAG(df, tr)
     mat, bound = ProfileMatrix(df, tr)
@@ -53,6 +51,44 @@ end
     end
 end
 
+@testset "Drosophila data, DAG vs. matrix vs. WGDgc" begin
+    import BirdDad: loglikelihood!
+    df = CSV.read(joinpath(datadir, "drosophila/counts-oib.csv"))
+    tr = readtree(joinpath(datadir, "drosophila/tree.nw"))
+    wgdgc = CSV.read(joinpath(datadir, "drosophila/wgdgc-largest-l1.0-m1.0.csv"))
+    rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
+    for i=1:10
+        sdf = df[i:i,:]
+        dag, bound = CountDAG(sdf, tr)
+        mat, bound = ProfileMatrix(sdf, tr)
+        model = PhyloBDP(rates, tr, bound)
+        m = model((λ=1., μ=1.))
+        l1 = loglikelihood!(dag, m)
+        l2 = loglikelihood!(mat, m)
+        a, b, c = wgdgc[:,i][1:30], dag.parts[end][1:30], mat[1].ℓ[1][1:30]
+        @test all(isapprox.(a, c, atol=1e-4))
+    end
+end
+
+@testset "Gradient issues with large families..." begin
+    using ForwardDiff
+    df = CSV.read(joinpath(datadir, "drosophila/counts-oib.csv"))
+    tr = readtree(joinpath(datadir, "drosophila/tree.nw"))
+    for i=1:20
+        res = map(1:10) do j
+            dag, bound = CountDAG(df[i:i,:], tr)
+            mat, bound = ProfileMatrix(df[i:i,:], tr)
+            rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
+            model = PhyloBDP(rates, tr, bound)
+            x = round.(randn(2), digits=2)
+            ∇ℓd = ForwardDiff.gradient(x->logpdf(model(x), dag), x)
+            ∇ℓp = ForwardDiff.gradient(x->logpdf(model(x), mat), x)
+            (x, ∇ℓd, ∇ℓp)
+        end
+        @info "∇ℓ for family $i" res
+    end
+end
+
 # This is an important test, comparing to an independent implementation
 @testset "Compare CM algorithm with WGDgc (Ané)" begin
     tree = readnw("(D:18.03,(C:12.06,(B:7.06,A:7.06):4.99):5.97);")
@@ -62,7 +98,6 @@ end
     r = RatesModel(ConstantDLG(λ=.2, μ=.3, κ=0.0, η=0.9))
     m = PhyloBDP(r, tree, bound)
     ℓ = BirdDad.loglikelihood!(dag, m)
-    # @test isapprox(ℓ, -19.4707431557829, atol=1e-6)  # WGDgc with oneInBothClades
     @test isapprox(ℓ, -19.624930615416645, atol=1e-6)
     wgdgc = [-Inf, -13.032134, -10.290639, -8.968442, -8.413115,
              -8.380409, -8.78481, -9.592097, -10.801585, -12.448171,
@@ -77,11 +112,11 @@ end
 end
 
 @testset "MixtureModel" begin
-    X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
-    tree = readnw(readline("example/9dicots.nw"))
-    dag, bound = CountDAG(X, s, tree)
+    df = CSV.read(joinpath(datadir, "9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
     rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0.1, η=1/1.5))
-    model = PhyloBDP(rates, tree, bound)
+    model = PhyloBDP(rates, tr, bound)
     mixmodel = MixtureModel([model, model])
     @test logpdf(mixmodel, dag) ≈ logpdf(mixmodel.components[1], dag)
     mixmodel = MixtureModel([model(randn(4)) for i=1:4])
@@ -90,16 +125,16 @@ end
 
 @testset "Non-linear models, ConstantDLSC" begin
     import BirdDad: ConstantDLSC
-    X, s = readdlm("example/9dicots-f01-100.csv", ',', Int, header=true)
-    tree = readnw(readline("example/9dicots.nw"))
-    dag, bound = CountDAG(X, s, tree)
+    df = CSV.read(joinpath(datadir, "9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
     rates = RatesModel(ConstantDLSC(λ=.1, μ=.1, μ₁=0.01, η=1/1.5, m=bound))
-    model = PhyloBDP(rates, tree, bound)
+    model = PhyloBDP(rates, tr, bound)
 
     dag = BirdDad.nonlineardag(dag, bound)
     ℓ1 = BirdDad.loglikelihood!(dag, model)
 
-    ps, bound = ProfileMatrix(X, s, tree)
+    ps, bound = ProfileMatrix(df, tr)
     ps = BirdDad.nonlinearprofile(ps, bound)
     ℓ2 = BirdDad.loglikelihood!(ps, model)
     @test ℓ1 ≈ ℓ2
@@ -108,18 +143,18 @@ end
     for i=1:10
         r = exp.(randn(2))
         η = rand(Beta(6,2))
-        dag, bound = CountDAG(X, s, tree)
+        dag, bound = CountDAG(df, tr)
 
         rates = RatesModel(ConstantDLG(λ=r[1], μ=r[2], κ=.0, η=η))
-        model1 = PhyloBDP(rates, tree, bound)
+        model1 = PhyloBDP(rates, tr, bound)
         ℓ1 = BirdDad.loglikelihood!(dag, model1)
 
         dag_ = BirdDad.nonlineardag(dag, 10bound)
         rates= RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=10bound))
-        model2 = PhyloBDP(rates, tree, 10bound)
+        model2 = PhyloBDP(rates, tr, 10bound)
         ℓ2 = BirdDad.loglikelihood!(dag_, model2)
 
-        ps, bound = ProfileMatrix(X, s, tree)
+        ps, bound = ProfileMatrix(df, tr)
         ps = BirdDad.nonlinearprofile(ps, 10bound)
         ℓ3 = BirdDad.loglikelihood!(ps, model2)
         @test ℓ1 ≈ ℓ2 ≈ ℓ3

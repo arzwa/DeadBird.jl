@@ -14,8 +14,8 @@ NewickTree.name(n::Node{I,<:Rec}) where I =
 getlabel(n::Node{I,<:Rec}) where I = n.data.l
 label!(r) = for (i, x) in enumerate(prewalk(r)) x.id = i end
 
-Base.rand(model::PhyloBDP, leaves=name.(getleaves(getroot(model)))) =
-    randprofile(model, leaves)
+#Base.rand(model::PhyloBDP, leaves=name.(getleaves(getroot(model)))) =
+#    randprofile(model, leaves)
 
 function randprofile(model::LPhyloBDP, leaves)
     t = randtree(model)
@@ -162,6 +162,8 @@ end
 
 # Simulate profiles directly for Linear BDPs
 # I think this is much more to the point (but does not simulate trees)
+# Probably should be the `rand` function
+
 function simulate_profile(m)
     function walk(n, X=nothing)
         # simulate current edge
