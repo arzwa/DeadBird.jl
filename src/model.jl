@@ -9,9 +9,8 @@ struct NodeProbs{T}
 end
 
 const ModelNode{T,I} = Node{I,NodeProbs{T}}
-NodeProbs(n, m::Int) = NodeProbs(name(n), distance(n), zeros(2), zeros(m,m))
 NodeProbs(n, m::Int, T::Type) =
-    NodeProbs(name(n), distance(n), zeros(T, 2), zeros(T, m,m))
+    NodeProbs(name(n), distance(n), fill(T(-Inf), 2), fill(T(-Inf),m,m))
 Base.show(io::IO, n::NodeProbs{T}) where T = write(io, n.name)
 NewickTree.name(n::NodeProbs) = n.name
 NewickTree.distance(n::NodeProbs) = n.t
@@ -76,20 +75,3 @@ Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n~$(m.cond)\n$(m.rates))")
 root(m::PhyloBDP) = m.order[end]
 NewickTree.getroot(m::PhyloBDP) = root(m)
 
-# maybe make this a macro, so that we can show the function call?
-const PTOL = 1e-9  # tolerance for probabilities
-function probify(p)
-    p > one(p)  && return one(p)
-    p < zero(p) && return zero(p)
-    return p
-    # @warn doesn't get though Zygote...
-    # return if p > one(p)
-    #     !(isapprox(p, one(p), atol=PTOL)) && @warn "probability $p > 1, set to 1"
-    #     one(p)
-    # elseif p < zero(p)
-    #     !(isapprox(p, zero(p), atol=PTOL)) && @warn "probability $p < 0, set to 0"
-    #     zero(p)
-    # else
-    #     p
-    # end
-end

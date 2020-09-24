@@ -21,7 +21,12 @@ when necessary to avoid underflows? Or should we truncate entries to a lower
 bound? However choosing this bound would be a tricky task, since it depends on
 the maximum family size etc.
   
+(2) I don't think it is worthwhile having the *internals* of getϕ, getψ etc.
+operate on a log scale. Those are mostly relatively simple functions of λ,
+μ and t that should not receive too extreme values... Whether their return
+values should be on a log scale is another question...
 
+(3) In the CM algorithm, we mostly need log(extinction probabilities)
 =#
 
 function setmodel!(model::LPhyloBDP)
@@ -32,9 +37,91 @@ function setmodel!(model::LPhyloBDP)
     end
 end
 
+const ΛMTOL = 1e-6
+const LMTOL = log(ΛMTOL)
+approx1(x) = x ≈ one(x) ? one(x) : x
+approx0(x) = x ≈ zero(x) ? zero(x) : x
+probify(x) = max(min(x, one(x)), zero(x))
+
+"""
+    getϕψ(t, λ, μ)
+
+Returns `ϕ = μ(eʳ - 1)/(λeʳ - μ)` where `r = t*(λ-μ)` and `ψ = ϕ*λ/μ`, with
+special cases for λ ≈ μ. These methods should be implremented as to prevent
+underflow/overflow issues.  Note these quantities are also called p and q (in
+Csuros & Miklos) or α and β (in Bailey). Note that ϕ = P(Xₜ=0|X₀=1), i.e. the
+extinction probability for a single particle.
+"""
+function getϕψ(t, λ, μ)
+    if isapprox(λ, μ, atol=ΛMTOL)
+        ϕ = probify(λ*t/(one(λ) + λ*t) )
+        return ϕ, ϕ
+    else
+        r = exp(t*(λ-μ))
+        # for large values in the exponent, we get Inf, but
+        # actually the true value is μ/λ. If we get -Inf, the 
+        # true value should be 1.
+        r ==  Inf && return μ/λ, one(μ)
+        r == -Inf && return one(μ), λ/μ
+        a = μ*(r-one(r))
+        b = λ*r-μ
+        ϕ = a/b
+        return probify(ϕ), probify(ϕ*λ/μ)
+    end
+end
+
+"""
+    extp(t, λ, μ, ϵ)
+
+Compute the extinction probability of a single lineage evolving according to a
+linear BDP for time `t` with rate `λ` and `μ` and with extinction probability
+of a single lineage at `t` equal to `ϵ`. This is `∑ᵢℙ{Xₜ=i|X₀=1}ϵ^i`
+"""
+function extp(t, λ, μ, ϵ)
+    # XXX: takes ϵ on probability scale!
+    # NOTE: seems sufficiently stable that we don't need `probify`
+    ϵ ≈ one(ϵ)  && return one(ϵ)
+    ϵ ≈ zero(ϵ) && return getϕψ(t, λ, μ)[1]
+    if isapprox(λ, μ, atol=ΛMTOL)
+        e = one(ϵ) - ϵ
+        return one(ϵ) - e/(μ*t*e + one(ϵ))
+    else
+        r = exp(t*(λ-μ))
+        a = λ*r*(ϵ - one(ϵ))
+        b = μ-λ*ϵ
+        c = one(a) + a/b
+        d = μ/λ
+        return d + (one(d) - d)/c
+    end
+end
+
+getϵ(n, i::Int) = n.data.ϵ[i]
+setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
+
+"""
+    getϕψ′(ϕ, ψ, ϵ)
+
+Note that we take ϵ on a probability scale!
+```
+ϕ′ = [ϕ(1-ϵ) + (1-ψ)ϵ]/[1 - ψϵ]
+ψ′ = [ψ(1-ϵ)]/[1-ψϵ]
+```
+Some edge cases are when ϵ is 1 or 0. Other edge cases
+may be relevant when ψ and or ϕ is 1 or 0.
+"""
+function getϕψ′(ϕ, ψ, ϵ)
+    ϵ ≈ one(ϵ)  && return one(ϕ), zero(ψ)
+    ϵ ≈ zero(ϵ) && return ϕ, ψ
+    c = one(ψ) - ψ*ϵ
+    a = one(ϵ) - ϵ
+    ϕ′ = (ϕ*a + (one(ψ)-ψ)ϵ)/c
+    ψ′ = ψ*(one(ϵ)-ϵ)/c
+    ϕ′, ψ′
+end
+
 # NOTE that this does not involve the gain model!
 function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:LinearModel}
-    isleaf(n) && return  # XXX or should we set ϵ to 0.? [it should always be]
+    isleaf(n) && return  # XXX or should we set ϵ to -Inf?
     θn = getθ(rates, n)
     if iswgd(n) || iswgt(n)
         c = first(children(n))
@@ -43,21 +130,24 @@ function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:LinearModel}
         setϵ!(c, 1, ϵn)
         setϵ!(n, 2, ϵn)
     else
-        setϵ!(n, 2, one(T))
+        setϵ!(n, 2, zero(T))
         for c in children(n)
             θc = getθ(rates, c)
-            ϵc = extp(θc.λ, θc.μ, distance(c), getϵ(c, 2))
+            ϵc = log(extp(distance(c), θc.λ, θc.μ, exp(getϵ(c, 2))))
             setϵ!(c, 1, ϵc)
-            setϵ!(n, 2, probify(getϵ(n, 2) * ϵc))
+            setϵ!(n, 2, getϵ(n, 2) + ϵc)
         end
     end
 end
 
-getϵ(n, i::Int) = n.data.ϵ[i]
-setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
-wgdϵ(q, ϵ) = q*ϵ^2 + (one(q) - q)*ϵ
-wgtϵ(q, ϵ) = q*ϵ^3 + 2q*(one(q) - q)*ϵ^2 + (one(q) - q)^2*ϵ
+#wgdϵ(q, ϵ) = q*ϵ^2 + (one(q) - q)*ϵ
+#wgtϵ(q, ϵ) = q*ϵ^3 + 2q*(one(q) - q)*ϵ^2 + (one(q) - q)^2*ϵ
 
+# takes ϵ on log scale!
+wgdϵ(q, ϵ) = logaddexp(log(q)+2ϵ, log1p(-q) + ϵ)
+wgtϵ(q, ϵ) = logsumexp([log(q)+3ϵ, log(2q)+log1p(-q)+2ϵ, 2*log1p(-q)+ϵ])
+
+# Conditional survival transition probability matrix
 function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
     isroot(n) && return
     ϵ = getϵ(n, 2)
@@ -74,19 +164,21 @@ end
 function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ
     l = size(w)[1]-1
-    ϕ = getϕ(t, λ, μ)  # p
-    ψ = getψ(t, λ, μ)  # q
-    _n = one(ψ) - ψ*ϵ
-    ϕp = probify((ϕ*(one(ϵ) - ϵ) + (one(ψ) - ψ)*ϵ) / _n)
-    ψp = probify(ψ*(one(ϵ) - ϵ) / _n)
-    (κ/λ > zero(κ)) && (one(ψp) - ψp > zero(ψp)) ? # gain model
-        w[1,:] = pdf.(NegativeBinomial(κ/λ, one(ψp) - ψp), 0:l) :
-        w[1,1] = one(T)
+    ϕ, ψ = getϕψ(t, λ, μ)  # p, q
+    ϕ′, ψ′ = getϕψ′(ϕ, ψ, exp(ϵ))
+    a = 1. - ϕ′
+    b = 1. - ψ′
+    c = log(a) + log(b)
+    d = log(ψ′)
+    (κ/λ > zero(κ)) && (b > zero(b)) ? # gain model
+        w[1,:] = logpdf.(NegativeBinomial(κ/λ, b), 0:l) :
+        w[1,1] = zero(T)
     for m=1:l, n=1:m
-        w[n+1, m+1] = ψp*w[n+1, m] + (one(ϕ) - ϕp)*(one(ψ) - ψp)*w[n, m]
+        w[n+1, m+1] = logaddexp(d + w[n+1, m], c + w[n, m])
     end
 end
 
+# XXX todo, bring on log-scale
 function wstar_wgd!(w, t, θ, ϵ)
     @unpack λ, μ, q = θ
     w[1,1] = one(q)
@@ -98,6 +190,7 @@ function wstar_wgd!(w, t, θ, ϵ)
     end
 end
 
+# XXX todo
 function wstar_wgt!(w, t, θ, ϵ)
     @unpack λ, μ, q = θ
     q1 = q
@@ -113,28 +206,6 @@ function wstar_wgt!(w, t, θ, ϵ)
     end
 end
 
-const ΛMTOL = 1e-6
-approx1(x) = x ≈ one(x) ? one(x) : x
-approx0(x) = x ≈ zero(x) ? zero(x) : x
-
-getϕ(t, λ, μ) = isapprox(λ, μ, atol=ΛMTOL) ?
-    probify(λ*t/(one(λ) + λ*t)) :
-    probify(μ*(exp(t*(λ-μ))-one(λ))/(λ*exp(t*(λ-μ))-μ))
-getψ(t, λ, μ) = isapprox(λ, μ, atol=ΛMTOL) ?
-    probify(λ*t/(one(λ) + λ*t)) :
-    probify((λ/μ)*getϕ(t, λ, μ))
-extp(λ, μ, t, ϵ=0.) = isapprox(λ, μ, atol=ΛMTOL) ?
-    probify(one(ϵ) + (one(ϵ) - ϵ)/(μ * (ϵ - one(ϵ)) * t - one(ϵ))) :
-    probify((μ+(λ-μ)/(one(ϵ)+exp((λ-μ)*t)*λ*(ϵ-one(ϵ))/(μ-λ*ϵ)))/λ)
-getξ(i, j, k, t, λ, μ) = _bin(i, k)*_bin(i+j-k-1,i-1)*
-    getϕ(t, λ, μ)^(i-k)*getψ(t, λ, μ)^(j-k)*(1-getϕ(t, λ, μ)-getψ(t, λ, μ))^k
-tp(a, b, t, λ, μ) = (a == b == zero(a)) ? one(λ) :
-    probify(sum([getξ(a, b, k, t, λ, μ) for k=0:min(a,b)]))
-logfact_stirling(n) = n*log(n) - n + log(2π*n)/2
-_bin(n, k) = n > 60 ?
-    exp(logfact_stirling(n) - logfact_stirling(k) - logfact_stirling(n - k)) :
-    binomial(n, k)
-
 # Root integration
 function ∫root(p, rates, ϵ) 
     @unpack η = rates.params
@@ -148,13 +219,14 @@ function ∫root(p, rates, ϵ)
 end
 
 # We could work with types as well and use dispatch...
-conditionfactor(model) =
-    if model.cond == :root
+function conditionfactor(model)
+    return if model.cond == :root
         nonextinctfromrootcondition(model)
-    elseif model.cond == :nowhere
-        extinctnowherecondition(model)
+    #elseif model.cond == :nowhere
+    #    extinctnowherecondition(model)
     else
         0.
+    end
 end
 
 """
@@ -194,13 +266,12 @@ end
 # XXX: only for linear model, since it works from the extinction probability
 # for a single lineage and assumes the branching property
 function nonextinctfromrootcondition(model::LPhyloBDP)
-    @unpack η = getθ(model.rates, model[1])
+    @unpack η = getθ(model.rates, root(model))
     lη = log(η)
     o  = root(model)
-    ϵo = exp(geomϵp(log(getϵ(o, 2)), lη))  # XXX some ugly log(exp(log(exp...)))
-    ϵc = mapreduce(c->exp(geomϵp(log(getϵ(c, 1)), lη)), +, children(o))
-    cf = one(ϵc) - ϵc + ϵo
-    return  (one(cf) > cf > zero(cf) && isfinite(cf)) ? log(cf) : -Inf
+    ϵo = geomϵp(getϵ(o, 2), lη)  # XXX some ugly log(exp(log(exp...)))
+    ϵc = map(c->geomϵp(getϵ(c, 1), lη), children(o)) |> logsumexp
+    log(1. - exp(ϵc) + exp(ϵo))
 end
 
 geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)
@@ -233,8 +304,8 @@ end
 function acclogpdf(dag::CountDAG, model::LPhyloBDP{T}) where T
     @unpack graph, ndata, parts = dag
     @unpack η = getθ(model.rates, root(model))
-    ϵ = log(probify(getϵ(root(model), 2)))
-    ℓ = 0.
+    ϵ = getϵ(root(model), 2)
+    ℓ = zero(T)
     for n in outneighbors(graph, nv(graph))
         ℓ += ndata[n].count*∫root(parts[n], model.rates, ϵ)
     end
@@ -270,7 +341,7 @@ end
 function sitepatterns_ℓ(dag, model, nodes)
     @unpack graph, ndata, parts = dag
     @unpack η = getθ(model.rates, model[1])
-    ϵ = log(probify(getϵ(model[1], 2)))
+    ϵ = getϵ(model[1], 2)
     [∫root(parts[n], model.rates, ϵ) for n in nodes]
 end
 
@@ -286,8 +357,7 @@ function loglikelihood!(p::Profile,
     for n in model.order
         _cm!(p, n, model)
     end
-    ϵ = log(probify(getϵ(root(model), 2)))
-    ℓ = ∫root(p.ℓ[1], model.rates, ϵ)
+    ℓ = ∫root(p.ℓ[1], model.rates, getϵ(root(model), 2))
     if condition
         ℓ -= conditionfactor(model)
     end
@@ -421,18 +491,17 @@ end
     kmax = [x[id(k)] for k in kids]
     kcum = cumsum([0 ; kmax])
     keps = [getϵ(c, 1) for c in kids]
-    ϵcum = cumprod([1.; keps])
+    ϵcum = cumsum([0.; keps])
     # not sure if correct for polytomies...
-    A = nothing
+    A = nothing  # is this efficient initialization?
     for (i, kid) in enumerate(kids)
         @unpack W = model[id(kid)].data
-        lϵ₁ = log(keps[i])
         B = cm_getB(T, W, ℓ[id(kid)], kcum[i], 
-                    kcum[i+1], kmax[i], lϵ₁)
+                    kcum[i+1], kmax[i], keps[i])
         A = i == 1 ? 
-            cm_getA1(T, B, kcum[2], ϵcum[2], lϵ₁) : 
+            cm_getA1(T, B, kcum[2], ϵcum[2], keps[i]) : 
             cm_getAi(T, B, A, kcum[i], kcum[i+1], 
-                     ϵcum[i], ϵcum[i+1], kmax[i], lϵ₁)
+                     ϵcum[i], ϵcum[i+1], kmax[i], keps[i])
         #@info "matrices" n kid B A
     end
     ℓ[id(n)] = A
@@ -440,39 +509,36 @@ end
 # julia> @btime _cm!(mat[1], model[4], model);
 #  208.380 μs (50 allocations: 50.67 KiB)
 
+"""
+    logmatvecmul(A, x)
+
+Compute log.(Ax) given log.(A) and log.(x).
+"""
+@inline function logmatvecmul(A::Matrix{T}, x::Vector{T}) where T
+    y = similar(x)
+    @inbounds for i=1:length(x)
+        y[i] = logsumexp(A[i,:] .+ x)
+    end
+    return y
+end
+
 # @inbounds matters quite a lot to performance! but beware when 
 # changing stuff...
 @inline function cm_getB(T, W, L, k1, k2, mi, lϵ₁)
     B = fill(T(-Inf), (k2-k1+1, k2+1))
-    @inbounds B[:, 1] = log.(W[1:mi+1, 1:mi+1] * exp.(L))
-    maxB = -Inf
+    B[:, 1] = logmatvecmul(W[1:mi+1,1:mi+1], L)
     for t=1:k1, s=0:mi  # this is 0...M[i-1] & 0...mi
-        @inbounds Bts = s == mi ?
+        Bts = s == mi ?
             B[s+1,t] + lϵ₁ : 
             logaddexp(B[s+2,t], lϵ₁+B[s+1,t])
-        maxB = Bts > maxB ? Bts : maxB
-        #Bts = checkdual(Bts)
-        @inbounds B[s+1,t+1] = Bts
+        B[s+1,t+1] = Bts
     end
-    # XXX If we truncate smart (relative to largest value), 
-    # we could avoid NaN issues in the gradient...
-    # B[B .< -500.] .= -Inf
-    B[B .< 10*maxB] .= -Inf  # make the factor a constant in the library?
-    # It does mess up the likelihoods for large families though...
     return B
 end
 
-#checkdual(x::Float64) = x
-#function checkdual(x::ForwardDiff.Dual{T}) where T
-#    all(isfinite.(x.partials)) && return x
-#    ps = [isfinite(p) ? p : 0. for p in x.partials]
-#    y = ForwardDiff.Dual{T}(x.value, ps...)
-#    y
-#end
-
 @inline function cm_getA1(T, B, k2, ϵ2, lϵ₁)
     A₁ = fill(T(-Inf), k2+1)
-    l1me = log(probify(one(lϵ₁) - ϵ2))
+    l1me = log1mexp(ϵ2)
     for n=0:k2  # this is 0 ... M[i]
         @inbounds A₁[n+1] = B[n+1,1] - n*l1me
     end
@@ -481,8 +547,8 @@ end
 
 @inline function cm_getAi(T, B, A, k1, k2, ϵ1, ϵ2, mi, lϵ₁)
     Aᵢ = fill(T(-Inf), k2+1)
-    p = probify(ϵ1)
-    l1me = log(probify(one(lϵ₁) - ϵ2))
+    p = exp(ϵ1)
+    l1me = log1mexp(ϵ2)
     for n=1:k2
         tmax = min(k1, n)
         tmin = max(n-mi, 0)
