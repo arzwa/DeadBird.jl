@@ -75,3 +75,12 @@ Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n~$(m.cond)\n$(m.rates))")
 root(m::PhyloBDP) = m.order[end]
 NewickTree.getroot(m::PhyloBDP) = root(m)
 
+const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
+
+function setmodel!(model::LPhyloBDP)
+    @unpack order, rates = model
+    for n in order
+        setϵ!(n, rates)
+        setW!(n, rates)
+    end
+end

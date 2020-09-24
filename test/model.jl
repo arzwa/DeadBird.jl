@@ -30,8 +30,8 @@ end
         rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
         model = PhyloBDP(rates(randn(2)), tr, bound)
         l1 = BirdDad.loglikelihood!(matrix, model)
-        #l2 = BirdDad.loglikelihood!(dag, model)
-        #@test l1 ≈ l2
+        l2 = BirdDad.loglikelihood!(dag, model)
+        @test l1 ≈ l2
     end
 end
 
@@ -69,29 +69,32 @@ end
         l2 = loglikelihood!(mat, m)
         a, b, c = wgdgc[:,i][1:30], dag.parts[end][1:30], mat[1].ℓ[1][1:30]
         @test all(isapprox.(a, c, atol=1e-4))
+        @test all(isapprox.(a, b, atol=1e-4))
     end
 end
 
+# intensive one
 @testset "Gradient issues with large families..." begin
     using ForwardDiff
     df = CSV.read(joinpath(datadir, "drosophila/counts-oib.csv"))
     tr = readtree(joinpath(datadir, "drosophila/tree.nw"))
     for i=1:20
-        res = map(1:10) do j
+        res = map(1:5) do j
             dag, bound = CountDAG(df[i:i,:], tr)
             mat, bound = ProfileMatrix(df[i:i,:], tr)
-            rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
+            parms = ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5)
+            rates = RatesModel(parms, fixed=(:η,:κ))
             model = PhyloBDP(rates, tr, bound)
             x = round.(randn(2), digits=2)
             ∇ℓd = ForwardDiff.gradient(x->logpdf(model(x), dag), x)
             ∇ℓp = ForwardDiff.gradient(x->logpdf(model(x), mat), x)
+            @test all(isfinite.(∇ℓd))
+            @test all(isfinite.(∇ℓp))
             (x, ∇ℓd, ∇ℓp)
         end
-        @info "∇ℓ for family $i" res
     end
 end
 
-# This is an important test, comparing to an independent implementation
 @testset "Compare CM algorithm with WGDgc (Ané)" begin
     tree = readnw("(D:18.03,(C:12.06,(B:7.06,A:7.06):4.99):5.97);")
     X = [2 2 3 4 ; 2 2 3 4]
@@ -108,9 +111,9 @@ end
         @test isapprox(dag.parts[end][i], wgdgc[i], atol=1e-6)
     end
     root = BirdDad.root(m)
-    @test isapprox(root.data.ϵ[2], 0.817669336686759, atol=1e-6)
-    @test isapprox(root[1].data.ϵ[1], 0.938284827880156, atol=1e-6)
-    @test isapprox(root[2].data.ϵ[1], 0.871451090746186, atol=1e-6)
+    @test isapprox(root.data.ϵ[2],    log(0.81766934), atol=1e-6)
+    @test isapprox(root[1].data.ϵ[1], log(0.93828483), atol=1e-6)
+    @test isapprox(root[2].data.ϵ[1], log(0.87145109), atol=1e-6)
 end
 
 @testset "MixtureModel" begin
@@ -125,6 +128,7 @@ end
     @test -Inf < logpdf(mixmodel, dag) < 0.
 end
 
+# not supported anymore?
 @testset "Non-linear models, ConstantDLSC" begin
     import BirdDad: ConstantDLSC
     df = CSV.read(joinpath(datadir, "9dicots-f01-100.csv"))

@@ -13,30 +13,6 @@
 # shorthand alias
 const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
 
-#= Numerical issues:
-
-(1) The W matrix has extremely small entries (note that it is not a stochastic
-matrix BTW!), could we have it on a log scale and use logsumexps throughout
-when necessary to avoid underflows? Or should we truncate entries to a lower
-bound? However choosing this bound would be a tricky task, since it depends on
-the maximum family size etc.
-  
-(2) I don't think it is worthwhile having the *internals* of getϕ, getψ etc.
-operate on a log scale. Those are mostly relatively simple functions of λ,
-μ and t that should not receive too extreme values... Whether their return
-values should be on a log scale is another question...
-
-(3) In the CM algorithm, we mostly need log(extinction probabilities)
-=#
-
-function setmodel!(model::LPhyloBDP)
-    @unpack order, rates = model
-    for n in order
-        setϵ!(n, rates)
-        setW!(n, rates)
-    end
-end
-
 const ΛMTOL = 1e-6
 const LMTOL = log(ΛMTOL)
 approx1(x) = x ≈ one(x) ? one(x) : x
@@ -232,14 +208,14 @@ end
 """
     ∫rootshiftgeometric(ℓ, η, ϵ)
 
-Integrate the loglikelihood at the root for the conditional process,
-with the prior on the number of lineages existing (X) at the root
-a shifted geometric distribution with mean 1/η, i.e. X ~ Geometric(η)+1
+Integrate the loglikelihood at the root for the conditional process, with the
+prior on the number of lineages existing (X) at the root a shifted geometric
+distribution with mean 1/η, i.e. X ~ Geometric(η)+1
 
-`ℓ[i]` is ℙ{data|Y=i}, where Y is the number of lineages at the root
-that leave observed descendants. `le` log extinction probablity lϵ.
-This function computes ℙ{data|X} based on ℙ{data|Y} (right?).
-Assumes at least one ancestral gene.
+`ℓ[i]` is ℙ{data|Y=i}, where Y is the number of lineages at the root that leave
+observed descendants. `le` log extinction probablity lϵ.  This function
+computes ℙ{data|X} based on ℙ{data|Y} (right?).  Assumes at least one ancestral
+gene.
 """
 @inline function ∫rootshiftgeometric(ℓ, η, lϵ)
     p = -Inf
@@ -297,9 +273,8 @@ function loglikelihood!(dag::CountDAG, model::LPhyloBDP{T}) where T
     #!isfinite(ℓ) && @warn "ℓ not finite"
     isfinite(ℓ) ? ℓ : -Inf
 end
-# NOTE: maybe a distributed approach using SharedArray or DArray
-# would be more efficient, but it's much less convenient
-# (and not so compatible with AD?)
+# NOTE: maybe a distributed approach using SharedArray or DArray would be more
+# efficient, but it's much less convenient (and not so compatible with AD?)
 
 function acclogpdf(dag::CountDAG, model::LPhyloBDP{T}) where T
     @unpack graph, ndata, parts = dag
@@ -312,8 +287,8 @@ function acclogpdf(dag::CountDAG, model::LPhyloBDP{T}) where T
     return ℓ
 end
 
-# Mixture model, note that every site is `mixed` independently,
-# we cannot just sum the full data likelihood for each component!
+# Mixture model, note that every site is `mixed` independently, we cannot just
+# sum the full data likelihood for each component!
 function loglikelihood!(dag::CountDAG,
         model::MixtureModel{VF,VS,<:LPhyloBDP{T}}) where {VF,VS,T}
     @unpack graph, ndata = dag
@@ -347,15 +322,15 @@ end
 
 # Likelihood using the Profile(Matrix) data structure
 # NOTE: condition is optional, because for a full matrix it is of course
-# redundant to compute the same condition factor many times.
-# Nevertheless, we still want to have loglikelihood(profile)
-# to give the correct loglikelihood value for a single profile as well.
+# redundant to compute the same condition factor many times.  Nevertheless, we
+# still want to have loglikelihood(profile) to give the correct loglikelihood
+# value for a single profile as well.
 function loglikelihood!(p::Profile,
         model::LPhyloBDP{T},
         condition=true) where T
     @unpack η = getθ(model.rates, root(model))
     for n in model.order
-        _cm!(p, n, model)
+        cm!(p, n, model)
     end
     ℓ = ∫root(p.ℓ[1], model.rates, getϵ(root(model), 2))
     if condition
@@ -364,6 +339,10 @@ function loglikelihood!(p::Profile,
     isfinite(ℓ) ? ℓ : -Inf
 end
 
+# Major refactor
+# Somwehat more intelligle, and doesn't allocate large matrices. However, it
+# is not faster (but numerically more stable). It should be more amenable to
+# furtther optimizations though...
 """
     cm!(dag, node, model)
 
@@ -373,6 +352,7 @@ transition probability matrices `W` and that the partial loglikelihood vectors
 for the child nodes in the DAG are already computed and available.
 """
 @inline function cm!(dag::CountDAG{T}, n, model) where T
+    # n is a graph node (Int)
     @unpack graph, ndata, parts = dag
     if outdegree(graph, n) == 0  # leaf case
         isassigned(parts, n) && return
@@ -385,99 +365,12 @@ for the child nodes in the DAG are already computed and available.
     kmax = [ndata[k].bound for k in kids]
     kcum = cumsum([0 ; kmax])
     keps = [getϵ(c, 1) for c in children(mnode)]
-    ϵcum = cumprod([1.; keps])
-    B = fill(T(-Inf), (dnode.bound+1, kcum[end]+1, length(kmax)))
-    A = fill(T(-Inf), (kcum[end]+1, length(kmax)))
-    for (i, kid) in enumerate(kids)
-        @unpack W = model[ndata[kid].snode].data
-        cm_inner!(i, A, B, W, parts[kid],
-            ϵcum, kcum, kmax[i], log(keps[i]))
-        #@info "Matrices" B A 
-    end
-    parts[n] = A[:,end]
-    return B
+    ϵcum = cumsum([0.; keps])
+    midx = [ndata[kid].snode for kid in kids]    
+    parts[n] = cm_inner!(model, parts, midx, kids, kcum, kmax, keps, ϵcum)
 end
 
-#function _cm!(dag::CountDAG{T}, n, model) where T
-#    @unpack graph, ndata, parts = dag
-#    kids = outneighbors(graph, n)
-#    for (i, kid) in enumerate(kids)
-#        c = ndata[kid].snode
-#        @unpack W = model[c].data
-#        ℓ = parts[kid]
-#        l = length(ℓ)
-#        ϵ = getϵ(c, 1)
-#        m = ndata[kid].bound
-#        B0 = log.(W[1:l,1:l] * exp.(ℓ))
-#        @info "logB (_cm)" B0
-#    end
-#end
-
-# For the Profile struct
 @inline function cm!(profile::Profile{T}, n, model) where T
-    # n is a node from the model
-    @unpack x, ℓ = profile
-    bound = length(ℓ[id(n)])
-    if isleaf(n)  # leaf case
-        ℓ[id(n)][x[id(n)]+1] = zero(T)
-        return
-    end
-    kids = children(n)
-    kmax = [x[id(k)] for k in kids]
-    kcum = cumsum([0 ; kmax])
-    keps = [getϵ(c, 1) for c in kids]
-    ϵcum = cumprod([1.; keps])
-    # B matrix is much too big
-    B = fill(T(-Inf), (bound, kcum[end]+1, length(kmax)))
-    A = fill(T(-Inf), (kcum[end]+1, length(kmax)))
-    for (i, kid) in enumerate(kids)
-        @unpack W = model[id(kid)].data
-        cm_inner!(i, A, B, W, ℓ[id(kid)],
-            ϵcum, kcum, kmax[i], log(keps[i]))
-    end
-    ℓ[id(n)] = A[:,end]
-end
-# Benchmark on family 1 of the drosophila data
-# commit 227ff5e9ea601f21631aca4b911924db13ebcc24
-# julia> @btime cm!(mat[1], model[4], model);
-#  213.491 μs (49 allocations: 94.61 KiB)
-
-
-# this can and should be shared with a non-DAG implementation
-@inline function cm_inner!(i, A, B, W, L, ϵcum, kcum, mi, lϵ₁)
-    #@info "cm_inner!" i kcum ϵcum mi lϵ₁ size(A) size(B) size(W)
-    @inbounds B[1:mi+1, 1, i] = log.(W[1:mi+1, 1:mi+1] * exp.(L))
-    for t=1:kcum[i], s=0:mi  # this is 0...M[i-1] & 0...mi
-        @inbounds B[s+1,t+1,i] = s == mi ?
-            B[s+1,t,i] + lϵ₁ : logaddexp(B[s+2,t,i], lϵ₁+B[s+1,t,i])
-    end
-    if i == 1
-        l1me = log(probify(one(lϵ₁) - ϵcum[2]))
-        for n=0:kcum[i+1]  # this is 0 ... M[i]
-            @inbounds A[n+1,i] = B[n+1,1,i] - n*l1me
-        end
-    else
-        # XXX is this loop as efficient as it could? I guess not...
-        p = probify(ϵcum[i])
-        for n=0:kcum[i+1], t=0:kcum[i]
-            s = n-t
-            (s < 0 || s > mi) && continue
-            @inbounds lp = binomlogpdf(n, p, s) + A[t+1,i-1] + B[s+1,t+1,i]
-            @inbounds A[n+1,i] = logaddexp(A[n+1,i], lp)
-        end
-        l1me = log(probify(one(lϵ₁) - ϵcum[i+1]))
-        for n=0:kcum[i+1]  # this is 0 ... M[i]
-            @inbounds A[n+1,i] -= n*l1me
-        end
-    end
-end
-
-
-# Major refactor
-# Somwehat more intelligle, and doesn't allocate large matrices.  However, it's
-# only marginally faster for both likelihood and gradient. It should be more
-# amenable to furtther optimizations though...
-@inline function _cm!(profile::Profile{T}, n, model) where T
     # n is a node from the model
     @unpack x, ℓ = profile
     bound = length(ℓ[id(n)])
@@ -492,32 +385,41 @@ end
     kcum = cumsum([0 ; kmax])
     keps = [getϵ(c, 1) for c in kids]
     ϵcum = cumsum([0.; keps])
-    # not sure if correct for polytomies...
-    A = nothing  # is this efficient initialization?
-    for (i, kid) in enumerate(kids)
-        @unpack W = model[id(kid)].data
-        B = cm_getB(T, W, ℓ[id(kid)], kcum[i], 
-                    kcum[i+1], kmax[i], keps[i])
-        A = i == 1 ? 
-            cm_getA1(T, B, kcum[2], ϵcum[2], keps[i]) : 
-            cm_getAi(T, B, A, kcum[i], kcum[i+1], 
-                     ϵcum[i], ϵcum[i+1], kmax[i], keps[i])
-        #@info "matrices" n kid B A
-    end
-    ℓ[id(n)] = A
+    kidid = id.(kids)
+    ℓ[id(n)] = cm_inner!(model, ℓ, kidid, kidid, kcum, kmax, keps, ϵcum)
 end
 # julia> @btime _cm!(mat[1], model[4], model);
-#  208.380 μs (50 allocations: 50.67 KiB)
+#  226.936 μs (182 allocations: 98.48 KiB)
+
+function cm_inner!(model, ℓ, midx, lidx, kc, km, ke, ϵc::Vector{T}) where T
+    # not sure if correct for polytomies... I guess almost but not quite?
+    A = nothing  # is this efficient initialization?
+    for i=1:length(midx)
+        if kc[i+1] == 0
+            A = zeros(T, 1)
+            continue
+        end
+        @unpack W = model[midx[i]].data
+        B = cm_getB(T, W, ℓ[lidx[i]], kc[i], kc[i+1], km[i], ke[i])
+        A = i == 1 ? 
+            cm_getA1(T, B, kc[2], ϵc[2], ke[i]) : 
+            cm_getAi(T, B, A, kc[i], kc[i+1], ϵc[i], ϵc[i+1], km[i], ke[i])
+        size(B)[2] == 1 && @info "matrices" kid B A kc i
+    end
+    return A
+end
 
 """
     logmatvecmul(A, x)
 
 Compute log.(Ax) given log.(A) and log.(x).
+Can this be optimized to have less allocs?  Doing it in-place didn't seem to
+help much?
 """
 @inline function logmatvecmul(A::Matrix{T}, x::Vector{T}) where T
     y = similar(x)
-    @inbounds for i=1:length(x)
-        y[i] = logsumexp(A[i,:] .+ x)
+    for i=1:length(x)
+        @inbounds y[i] = logsumexp(A[i,:] .+ x)
     end
     return y
 end
@@ -526,12 +428,12 @@ end
 # changing stuff...
 @inline function cm_getB(T, W, L, k1, k2, mi, lϵ₁)
     B = fill(T(-Inf), (k2-k1+1, k2+1))
-    B[:, 1] = logmatvecmul(W[1:mi+1,1:mi+1], L)
+    @inbounds B[:,1] = logmatvecmul(W[1:mi+1,1:mi+1], L)
     for t=1:k1, s=0:mi  # this is 0...M[i-1] & 0...mi
-        Bts = s == mi ?
+        @inbounds Bts = s == mi ?
             B[s+1,t] + lϵ₁ : 
             logaddexp(B[s+2,t], lϵ₁+B[s+1,t])
-        B[s+1,t+1] = Bts
+        @inbounds B[s+1,t+1] = Bts
     end
     return B
 end
@@ -559,7 +461,7 @@ end
         end
     end
     for n=0:k2  # this is 0 ... M[i]
-        Aᵢ[n+1] -= n*l1me
+        @inbounds Aᵢ[n+1] -= n*l1me
     end
     return Aᵢ
 end
