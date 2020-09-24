@@ -11,6 +11,7 @@ using StatsFuns
 using TransformVariables
 using DataFrames
 using BandedMatrices
+using ForwardDiff
 import StatsBase: loglikelihood
 # import FakeFamily: Params, RatesModel, getθ, trans
 

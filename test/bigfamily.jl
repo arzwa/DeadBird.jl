@@ -28,6 +28,30 @@ g = ForwardDiff.gradient(x->logpdf(model(x), mat), x)
 # I guess...
 
 
+tx = 8
+df = CSV.read("../example/drosophila/$(tx)taxa.csv")
+tr = readnw(readline("../example/drosophila/$(tx)taxa.nw"))
+dag, bound = CountDAG(df[1:100,:], tr)
+rates = RatesModel(ConstantDLG(λ=1e2, μ=1e2, κ=0., η=1/1.5), fixed=(:η,:κ))
+model = PhyloBDP(rates, tr, bound)
+
+using ForwardDiff
+
+# MNWE
+mat, bound = ProfileMatrix(df[1:1,:], tr)
+x = [1.703358267, 1.54850752]
+g = ForwardDiff.gradient(x->logpdf(model(x), mat), x)
+
+using Optim, Turing
+@model mle(model, data) = begin
+    r ~ MvLogNormal(zeros(2), ones(2))
+    data ~ model((λ=r[1], μ=r[2]))
+end
+
+mat, bound = ProfileMatrix(df[1:100,:], tr)
+optimize(mle(model(randn(2)), mat), MLE())
+
+# --------------------------------------------------------------------------
 for i=1:100
     x = repeat(randn(1), 2); x[1] *= 1.1
     g = ForwardDiff.gradient(x->logpdf(model(x), dag), x)

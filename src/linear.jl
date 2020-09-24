@@ -13,6 +13,17 @@
 # shorthand alias
 const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
 
+#= Numerical issues:
+
+(1) The W matrix has extremely small entries (note that it is not a stochastic
+matrix BTW!), could we have it on a log scale and use logsumexps throughout
+when necessary to avoid underflows? Or should we truncate entries to a lower
+bound? However choosing this bound would be a tricky task, since it depends on
+the maximum family size etc.
+  
+
+=#
+
 function setmodel!(model::LPhyloBDP)
     @unpack order, rates = model
     for n in order
@@ -58,13 +69,7 @@ function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
     else
         wstar!(n.data.W, distance(n), θ, ϵ)
     end
-    # NOTE: elseif isleaf -> take into account sampling probabilities?
-    # tricky, because the bounds on the maximum state are no longer known in
-    # the imperfect sampling setting, so we can only approximate this... (but
-    # that is anyway the case also if we don't employ the CM algorithm)
 end
-
-# Base.show(io::IO, x::ForwardDiff.Dual) = show(io, "dual$(x.value)")
 
 function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ
@@ -400,7 +405,8 @@ end
 
 # Major refactor
 # Somwehat more intelligle, and doesn't allocate large matrices.  However, it's
-# only marginally faster for both likelihood and gradient.
+# only marginally faster for both likelihood and gradient. It should be more
+# amenable to furtther optimizations though...
 @inline function _cm!(profile::Profile{T}, n, model) where T
     # n is a node from the model
     @unpack x, ℓ = profile
@@ -427,7 +433,7 @@ end
             cm_getA1(T, B, kcum[2], ϵcum[2], lϵ₁) : 
             cm_getAi(T, B, A, kcum[i], kcum[i+1], 
                      ϵcum[i], ϵcum[i+1], kmax[i], lϵ₁)
-        @info "matrices" n kid B A
+        #@info "matrices" n kid B A
     end
     ℓ[id(n)] = A
 end
@@ -439,17 +445,30 @@ end
 @inline function cm_getB(T, W, L, k1, k2, mi, lϵ₁)
     B = fill(T(-Inf), (k2-k1+1, k2+1))
     @inbounds B[:, 1] = log.(W[1:mi+1, 1:mi+1] * exp.(L))
+    maxB = -Inf
     for t=1:k1, s=0:mi  # this is 0...M[i-1] & 0...mi
-        @inbounds B[s+1,t+1] = s == mi ?
-            B[s+1,t] + lϵ₁ : logaddexp(B[s+2,t], lϵ₁+B[s+1,t])
+        @inbounds Bts = s == mi ?
+            B[s+1,t] + lϵ₁ : 
+            logaddexp(B[s+2,t], lϵ₁+B[s+1,t])
+        maxB = Bts > maxB ? Bts : maxB
+        #Bts = checkdual(Bts)
+        @inbounds B[s+1,t+1] = Bts
     end
     # XXX If we truncate smart (relative to largest value), 
     # we could avoid NaN issues in the gradient...
     # B[B .< -500.] .= -Inf
-    Bmax = maximum(B)
-    B[B .< 5*Bmax] .= -Inf
+    B[B .< 10*maxB] .= -Inf  # make the factor a constant in the library?
+    # It does mess up the likelihoods for large families though...
     return B
 end
+
+#checkdual(x::Float64) = x
+#function checkdual(x::ForwardDiff.Dual{T}) where T
+#    all(isfinite.(x.partials)) && return x
+#    ps = [isfinite(p) ? p : 0. for p in x.partials]
+#    y = ForwardDiff.Dual{T}(x.value, ps...)
+#    y
+#end
 
 @inline function cm_getA1(T, B, k2, ϵ2, lϵ₁)
     A₁ = fill(T(-Inf), k2+1)
