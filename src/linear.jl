@@ -10,9 +10,6 @@
 # each family separately, it is not useful to compute values up to the 
 # upper bound of the entire matrix for a node in the speices tree...
 
-# shorthand alias
-const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
-
 const ΛMTOL = 1e-6
 const LMTOL = log(ΛMTOL)
 approx1(x) = x ≈ one(x) ? one(x) : x
@@ -92,7 +89,9 @@ function getϕψ′(ϕ, ψ, ϵ)
     a = one(ϵ) - ϵ
     ϕ′ = (ϕ*a + (one(ψ)-ψ)ϵ)/c
     ψ′ = ψ*(one(ϵ)-ϵ)/c
-    ϕ′, ψ′
+    any([ϕ′, ψ′] .> one(ϵ)) && @warn "Problem!" ϕ ψ ϵ ϕ′ ψ′
+    any([ϕ′, ψ′] .< zero(ϵ)) && @warn "Problem!" ϕ ψ ϵ ϕ′ ψ′
+    probify(ϕ′), probify(ψ′)
 end
 
 # NOTE that this does not involve the gain model!
@@ -137,6 +136,13 @@ function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
     end
 end
 
+"""
+    wstar!(w::Matrix, t, θ, ϵ)
+
+Compute the transition probabilities for the conditional survival process
+recursively (not implemented using recursion though!). Note that the resulting
+transition matrix is *not* a stochastic matrix of some Markov chain.
+"""
 function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ
     l = size(w)[1]-1
@@ -154,31 +160,36 @@ function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '0
     end
 end
 
-# XXX todo, bring on log-scale
+# XXX untested since brought on log-scale!
 function wstar_wgd!(w, t, θ, ϵ)
     @unpack λ, μ, q = θ
-    w[1,1] = one(q)
-    w[2,2] = ((one(q) - q) + 2q*ϵ)*(one(ϵ) - ϵ)
-    w[2,3] = q*(one(ϵ) - ϵ)^2
+    l1me = log1mexp(ϵ)
+    a = log((1. - q) + 2q*exp(ϵ)) + l1me
+    b = log(q) + 2l1me
+    w[1,1] = zero(q)
+    w[2,2] = a
+    w[2,3] = b
     l = size(w)[1]-1
     for i=1:l, j=2:l
-        w[i+1, j+1] = w[2,2]*w[i, j] + w[2,3]*w[i, j-1]
+        w[i+1, j+1] = logaddexp(a + w[i,j], b + w[i, j-1]) 
     end
 end
 
-# XXX todo
 function wstar_wgt!(w, t, θ, ϵ)
     @unpack λ, μ, q = θ
-    q1 = q
-    q2 = 2q*(one(q) - q)
-    q3 = (one(q) - q)^2
-    w[1,1] = one(q)
-    w[2,2] = q1*(one(q) - ϵ) + 2*q2*ϵ*(one(ϵ) - ϵ) + 3*q3*(ϵ^2)*(one(ϵ) - ϵ)
-    w[2,3] = q2*(one(ϵ) - ϵ)^2 + 3q3*ϵ*(one(ϵ) - ϵ)^2
-    w[2,4] = q3*(one(ϵ) - ϵ)^3
+    q1 = log(q)
+    q2 = log(2q) + log(1. - q)
+    q3 = 2log(1. - q)
+    a = logsumexp([q1+l1me, log(2.)+q2+ϵ+l1me, log(3.)+q3+2ϵ+l1me])
+    b = logaddexp(q2 + 2l1me, log(3.) + q3 + ϵ + 2l1me)
+    c = q3 + 3l1me
+    w[1,1] = zero(q)
+    w[2,2] = a
+    w[2,3] = b
+    w[2,4] = c
     l = size(w)[1]-1
     for i=1:l, j=3:l
-        w[i+1, j+1] =  w[2,2]*w[i, j] + w[2,3]*w[i, j-1] + w[2,4]*w[i, j-2]
+        w[i+1, j+1] = logsumexp([a+w[i, j], b+w[i, j-1], c+w[i, j-2]])
     end
 end
 
@@ -238,7 +249,7 @@ end
 end
 
 # This is the non-extinction in both clades stemming from the root condition
-# XXX: assumes the geometric prior!
+# XXX: assumes the shifted geometric prior!
 # XXX: only for linear model, since it works from the extinction probability
 # for a single lineage and assumes the branching property
 function nonextinctfromrootcondition(model::LPhyloBDP)
@@ -354,9 +365,11 @@ for the child nodes in the DAG are already computed and available.
 @inline function cm!(dag::CountDAG{T}, n, model) where T
     # n is a graph node (Int)
     @unpack graph, ndata, parts = dag
+    if !isassigned(parts, n)
+        parts[n] = fill(T(-Inf), ndata[n].bound+1)
+    end
     if outdegree(graph, n) == 0  # leaf case
-        isassigned(parts, n) && return
-        parts[n] = [fill(T(-Inf), ndata[n].bound) ; zero(T)]
+        parts[n][end] = zero(T) #[fill(T(-Inf), ndata[n].bound) ; zero(T)]
         return
     end
     dnode = ndata[n]
@@ -367,7 +380,7 @@ for the child nodes in the DAG are already computed and available.
     keps = [getϵ(c, 1) for c in children(mnode)]
     ϵcum = cumsum([0.; keps])
     midx = [ndata[kid].snode for kid in kids]    
-    parts[n] = cm_inner!(model, parts, midx, kids, kcum, kmax, keps, ϵcum)
+    cm_inner!(parts[n], parts, model, midx, kids, kcum, kmax, keps, ϵcum)
 end
 
 @inline function cm!(profile::Profile{T}, n, model) where T
@@ -386,27 +399,24 @@ end
     keps = [getϵ(c, 1) for c in kids]
     ϵcum = cumsum([0.; keps])
     kidid = id.(kids)
-    ℓ[id(n)] = cm_inner!(model, ℓ, kidid, kidid, kcum, kmax, keps, ϵcum)
+    cm_inner!(ℓ[id(n)], ℓ, model, kidid, kidid, kcum, kmax, keps, ϵcum)
 end
-# julia> @btime _cm!(mat[1], model[4], model);
-#  226.936 μs (182 allocations: 98.48 KiB)
 
-function cm_inner!(model, ℓ, midx, lidx, kc, km, ke, ϵc::Vector{T}) where T
+@inline function cm_inner!(
+        ℓi, ℓ, model, midx, lidx, kc, km, ke, ϵc::Vector{T}) where T
     # not sure if correct for polytomies... I guess almost but not quite?
-    A = nothing  # is this efficient initialization?
+    #@info "cm inner" ℓi ℓ model midx lidx kc km ke ϵc
     for i=1:length(midx)
         if kc[i+1] == 0
-            A = zeros(T, 1)
+            ℓi[1] = zero(T)
             continue
         end
         @unpack W = model[midx[i]].data
         B = cm_getB(T, W, ℓ[lidx[i]], kc[i], kc[i+1], km[i], ke[i])
-        A = i == 1 ? 
-            cm_getA1(T, B, kc[2], ϵc[2], ke[i]) : 
-            cm_getAi(T, B, A, kc[i], kc[i+1], ϵc[i], ϵc[i+1], km[i], ke[i])
-        size(B)[2] == 1 && @info "matrices" kid B A kc i
+        i == 1 ?
+            cm_getA1!(ℓi, B, kc[2], ϵc[2], ke[1]) : 
+            cm_getAi!(ℓi, B, kc[i], kc[i+1], ϵc[i], ϵc[i+1], km[i], ke[i])    
     end
-    return A
 end
 
 """
@@ -416,7 +426,7 @@ Compute log.(Ax) given log.(A) and log.(x).
 Can this be optimized to have less allocs?  Doing it in-place didn't seem to
 help much?
 """
-@inline function logmatvecmul(A::Matrix{T}, x::Vector{T}) where T
+@inline function logmatvecmul(A::AbstractMatrix{T}, x::Vector{T}) where T
     y = similar(x)
     for i=1:length(x)
         @inbounds y[i] = logsumexp(A[i,:] .+ x)
@@ -424,11 +434,19 @@ help much?
     return y
 end
 
+# inplace version...
+@inline function _logmatvecmul!(B, A::AbstractMatrix{T}, x::Vector{T}) where T
+    for i=1:length(x)
+        @inbounds B[i,1] = logsumexp(A[i,:] .+ x)
+    end
+end
+
 # @inbounds matters quite a lot to performance! but beware when 
 # changing stuff...
 @inline function cm_getB(T, W, L, k1, k2, mi, lϵ₁)
     B = fill(T(-Inf), (k2-k1+1, k2+1))
-    @inbounds B[:,1] = logmatvecmul(W[1:mi+1,1:mi+1], L)
+    #@views @inbounds B[:,1] = logmatvecmul(W[1:mi+1,1:mi+1], L)
+    @views @inbounds _logmatvecmul!(B, W[1:mi+1,1:mi+1], L)
     for t=1:k1, s=0:mi  # this is 0...M[i-1] & 0...mi
         @inbounds Bts = s == mi ?
             B[s+1,t] + lϵ₁ : 
@@ -438,16 +456,14 @@ end
     return B
 end
 
-@inline function cm_getA1(T, B, k2, ϵ2, lϵ₁)
-    A₁ = fill(T(-Inf), k2+1)
+@inline function cm_getA1!(A, B, k2, ϵ2, lϵ₁)
     l1me = log1mexp(ϵ2)
     for n=0:k2  # this is 0 ... M[i]
-        @inbounds A₁[n+1] = B[n+1,1] - n*l1me
+        @inbounds A[n+1] = B[n+1,1] - n*l1me
     end
-    return A₁
 end
 
-@inline function cm_getAi(T, B, A, k1, k2, ϵ1, ϵ2, mi, lϵ₁)
+@inline function cm_getAi!(A::Vector{T}, B, k1, k2, ϵ1, ϵ2, mi, lϵ₁) where T
     Aᵢ = fill(T(-Inf), k2+1)
     p = exp(ϵ1)
     l1me = log1mexp(ϵ2)
@@ -461,8 +477,7 @@ end
         end
     end
     for n=0:k2  # this is 0 ... M[i]
-        @inbounds Aᵢ[n+1] -= n*l1me
+        @inbounds A[n+1] = Aᵢ[n+1] - n*l1me
     end
-    return Aᵢ
 end
 

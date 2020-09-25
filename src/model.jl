@@ -1,6 +1,7 @@
 # Split this file in model.jl and linear.jl
 
 # hate the name, but'it's barely used (the name that is)
+# ϵ and W should be abstract, because now we can't use Tracker...
 struct NodeProbs{T}
     name::String  # leaf name/wgd/wgt ...
     t::Float64    # usually distances have a fixed type

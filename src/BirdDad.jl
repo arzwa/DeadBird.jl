@@ -27,6 +27,7 @@ include("ppsim.jl")
 
 export CountDAG, ProfileMatrix, Profile
 export ConstantDLG, DLG, RatesModel, PhyloBDP, ConstantDLSC
+export simulate_profile
 
 # TODO:
 # - WGDs in matrix based approach

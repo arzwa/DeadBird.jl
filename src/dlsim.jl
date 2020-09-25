@@ -163,31 +163,50 @@ end
 # Simulate profiles directly for Linear BDPs
 # I think this is much more to the point (but does not simulate trees)
 # Probably should be the `rand` function
+# For posterior predictive simulations, this better be fast!
+function simulate_profile(m, n::Integer)
+    idx = getleafindex(m)
+    f = getcondition(m, idx)
+    res = mapreduce(i->simulate_profile(m, idx, f), hcat, 1:n) |> permutedims 
+    ks = first.(sort(collect(idx), by=x->last(x)))
+    cols = vcat(ks..., ["rejected", "extinct"])
+    DataFrame(res, Symbol.(cols))
+end
 
-function simulate_profile(m)
-    function walk(n, X=nothing)
-        # simulate current edge
-        θ  = getθ(m.rates, n)
-        X′ = isnothing(X) ? 
-            randroot(m.rates.rootprior, θ) : 
-            randedge(X, θ, distance(n)) 
-        if isleaf(n) 
-            profile[name(n)] = X′
-            return X′ 
-        end
-        next = map(c->walk(c, X′), children(n))
-        vcat(X′, next...)
+function getleafindex(m)
+    Dict(name(n)=>i for (i,n) in enumerate(getleaves(root(m))))    
+end
+
+function simulate_profile(m, idx=getleafindex(m), f=getcondition(m, idx))
+    i = -1
+    j = 0
+    profile = zeros(Int64, length(idx)+2)
+    while i < 0 || !f(profile)
+        full = simwalk!(profile, m, root(m), idx)
+        all(profile .== 0) ? j += 1 : nothing
+        i += 1
     end
-    f = getcondition(m)
-    profile = Dict{String,Int64}()
-    while !f(profile)
-        full = walk(root(m))
+    profile[end-1] = i
+    profile[end] = j
+    return profile
+end
+
+function simwalk!(profile, m, n, idx, X=nothing)
+    # simulate current edge
+    θ  = getθ(m.rates, n)
+    X′ = isnothing(X) ?  # root 
+        randroot(m.rates.rootprior, θ) : 
+        randedge(X, θ, distance(n)) 
+    if isleaf(n) 
+        profile[idx[name(n)]] = X′
+        return X′ 
     end
-    return dict2tuple(profile)
+    next = map(c->simwalk!(profile, m, c, idx, X′), children(n))
+    vcat(X′, next...)
 end
 
 # Should use dispatch on a type which stores those clades...
-function getcondition(m)
+function getcondition(m, idx)
     o = getroot(m)
     if m.cond == :root
         clades = [name.(getleaves(o[1])), name.(getleaves(o[2]))]
@@ -196,12 +215,9 @@ function getcondition(m)
     else  # no conditioning
         clades = []
     end
-    x->length(x) == 0 ? false : 
-        length(clades) == 0 ? true : 
-            all([any([x[sp] > 0 for sp in c]) for c in clades])
+    x->length(clades) == 0 ? true :  
+            all([any([x[idx[sp]] > 0 for sp in c]) for c in clades])
 end
-
-dict2tuple(d) = (;[Symbol(k)=>v for (k,v) in d]...)
 
 # only for shifted geometric and geometric priors
 randroot(prior::Symbol, θ) = rand(Geometric(θ.η)) + (prior == :shifted ? 1 : 0)

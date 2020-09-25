@@ -92,6 +92,7 @@ end
             @test all(isfinite.(∇ℓp))
             (x, ∇ℓd, ∇ℓp)
         end
+        @info "∇" res
     end
 end
 
@@ -125,7 +126,9 @@ end
     mixmodel = MixtureModel([model, model])
     @test logpdf(mixmodel, dag) ≈ logpdf(mixmodel.components[1], dag)
     mixmodel = MixtureModel([model(randn(4)) for i=1:4])
-    @test -Inf < logpdf(mixmodel, dag) < 0.
+    l = logpdf(mixmodel, dag) 
+    @info "l" l
+    @test -Inf < l < 0.
 end
 
 # not supported anymore?
