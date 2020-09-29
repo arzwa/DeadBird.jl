@@ -258,7 +258,7 @@ function nonextinctfromrootcondition(model::LPhyloBDP)
     o  = root(model)
     ϵo = geomϵp(getϵ(o, 2), lη)  # XXX some ugly log(exp(log(exp...)))
     ϵc = map(c->geomϵp(getϵ(c, 1), lη), children(o)) |> logsumexp
-    log(1. - exp(ϵc) + exp(ϵo))
+    log(probify(1. - exp(ϵc) + exp(ϵo)))
 end
 
 geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)

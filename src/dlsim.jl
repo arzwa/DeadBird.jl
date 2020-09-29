@@ -164,6 +164,15 @@ end
 # I think this is much more to the point (but does not simulate trees)
 # Probably should be the `rand` function
 # For posterior predictive simulations, this better be fast!
+function simulate_profile(m::ModelArray)
+    idx = getleafindex(m[1])
+    f = getcondition(m[1], idx)
+    res = mapreduce(i->simulate_profile(m[i], idx, f), hcat, 1:length(m)) |> permutedims
+    ks = first.(sort(collect(idx), by=x->last(x)))
+    cols = vcat(ks..., ["rejected", "extinct"])
+    DataFrame(res, Symbol.(cols)) 
+end
+
 function simulate_profile(m, n::Integer)
     idx = getleafindex(m)
     f = getcondition(m, idx)

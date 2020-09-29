@@ -1,7 +1,8 @@
-# Split this file in model.jl and linear.jl
-
+# Arthur Zwaenepoel (2020)
 # hate the name, but'it's barely used (the name that is)
 # ϵ and W should be abstract, because now we can't use Tracker...
+# But to be able to use ReverseDiff, we have to change a lot more
+# (array assignments for instance...)
 struct NodeProbs{T}
     name::String  # leaf name/wgd/wgt ...
     t::Float64    # usually distances have a fixed type
@@ -10,8 +11,13 @@ struct NodeProbs{T}
 end
 
 const ModelNode{T,I} = Node{I,NodeProbs{T}}
-NodeProbs(n, m::Int, T::Type) =
-    NodeProbs(name(n), distance(n), fill(T(-Inf), 2), fill(T(-Inf),m,m))
+
+function NodeProbs(n, m::Int, T::Type) 
+    ϵ = fill(T(-Inf), 2)
+    W = fill(T(-Inf), m, m)
+    NodeProbs(name(n), distance(n), ϵ, W)
+end
+
 Base.show(io::IO, n::NodeProbs{T}) where T = write(io, n.name)
 NewickTree.name(n::NodeProbs) = n.name
 NewickTree.distance(n::NodeProbs) = n.t
@@ -44,6 +50,16 @@ struct ModelArray{M} <: DiscreteMultivariateDistribution
     models::Vector{M}
 end
 
+Base.getindex(m::ModelArray, i) = m.models[i]
+Base.length(m::ModelArray) = length(m.models)
+
+# often useful, but not very general, does not play nice with RatesModel
+# interface, e.g. fixed/non-fixed etc...
+ModelArray(m, X, λ) = 
+    ModelArray([m((λ=λ[i], μ=λ[i]), X[i].x[1]+1) for i=1:length(λ)])
+ModelArray(m, X, λ, η::Real) = 
+    ModelArray([m((λ=λ[i], μ=λ[i], η=η), X[i].x[1]+1) for i=1:length(λ)])
+
 function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;
         cond::Symbol=:root) where {T,I}
     order = ModelNode{T,I}[]
@@ -65,7 +81,7 @@ end
 # i.e. they establish a model based on an already available model structure
 # and a new set of parameters.
 # The first makes a copy, the second modifies the existing model.
-(m::PhyloBDP)(θ) = PhyloBDP(m.rates(θ), m.order[end], m.bound-1, cond=m.cond)
+(m::PhyloBDP)(θ, b=m.bound-1) = PhyloBDP(m.rates(θ), m.order[end], b, cond=m.cond)
 function update!(m::PhyloBDP, θ)
     m.rates = m.rates(θ)
     setmodel!(m)
