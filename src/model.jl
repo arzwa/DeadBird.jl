@@ -56,9 +56,9 @@ Base.length(m::ModelArray) = length(m.models)
 # often useful, but not very general, does not play nice with RatesModel
 # interface, e.g. fixed/non-fixed etc...
 ModelArray(m, X, λ) = 
-    ModelArray([m((λ=λ[i], μ=λ[i]), X[i].x[1]+1) for i=1:length(λ)])
+    ModelArray([m((λ=λ[i], μ=λ[i]), X[i].x[1]) for i=1:length(λ)])
 ModelArray(m, X, λ, η::Real) = 
-    ModelArray([m((λ=λ[i], μ=λ[i], η=η), X[i].x[1]+1) for i=1:length(λ)])
+    ModelArray([m((λ=λ[i], μ=λ[i], η=η), X[i].x[1]) for i=1:length(λ)])
 
 function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;
         cond::Symbol=:root) where {T,I}

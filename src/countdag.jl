@@ -9,15 +9,15 @@ end
 """
     CountDAG{T,G,I}
 
-The directed acyclic graph (DAG) representation of a phylogenetic profile
-for an (assumed known) species tree.
-This is a [multitree](https://en.wikipedia.org/wiki/Multitree)
+The directed acyclic graph (DAG) representation of a phylogenetic profile for
+an (assumed known) species tree.  This is a
+[multitree](https://en.wikipedia.org/wiki/Multitree)
 
     CountDAG(matrix, header, tree::Node)
 
-Build the gene count DAG from `matrix` with a `header`
-corresponding to leaf names of `tree`.
-Returns the bound as well (for the PhyloBDP model constructor).
+Build the gene count DAG from `matrix` with a `header` corresponding to leaf
+names of `tree`.  Returns the bound as well (for the PhyloBDP model
+constructor).
 """
 struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
     graph ::SimpleDiGraph{G}  # the DAG, with vertices ordered in a post-order
@@ -89,11 +89,9 @@ end
 """
     add_leaves!(dag, ndata, parts, x, n)
 
-For a species tree leaf node `n`,
-this adds the vector of (gene) counts `x`
-for that species to the graph.
-This returns for each gene family
-the corresponding node that was added to the graph
+For a species tree leaf node `n`, this adds the vector of (gene) counts `x` for
+that species to the graph.  This returns for each gene family the corresponding
+node that was added to the graph
 """
 function add_leaves!(dag, ndata, parts, x, n)
     idmap = Dict()
@@ -109,16 +107,14 @@ end
 """
     add_internal!(dag, ndata, parts, x, n)
 
-For a species tree internal node `n`,
-this adds the gene family nodes associated with `n` to the graph
-and provides the bound on the number of lineages that survive
-to the present below `n` for each gene family.
-Note that `x` is a vector of tuples of DAG nodes
-that each will be joined into a newly added node.
-The resulting nodes are returned.
+For a species tree internal node `n`, this adds the gene family nodes
+associated with `n` to the graph and provides the bound on the number of
+lineages that survive to the present below `n` for each gene family.  Note that
+`x` is a vector of tuples of DAG nodes that each will be joined into a newly
+added node.  The resulting nodes are returned.
 
-NOTE: I believe this also works for multifurcating species trees
-(like the Csuros Miklos algorithm does too)
+NOTE: I believe this also works for multifurcating species trees (like the
+Csuros Miklos algorithm does too)
 """
 function add_internal!(dag, ndata, parts, x, n)
     idmap = Dict()
@@ -145,6 +141,7 @@ Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
     x::CountDAG) where {VF,VS,T} = loglikelihood!(copydag(x, T), m)
 
 Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
+Distributions.loglikelihood(m::MixtureModel{P}, x) where P<:PhyloBDP = logpdf(m, x)
 
 # ## Notes
 # We need a data structure that summarizes the entire data set. Or find any
