@@ -3,20 +3,20 @@ To be used with Literate, to generate a markdown report.
 Note, apparently, Literate cannot handle begin/end blocks?
 
 ```julia
-using BenchmarkTools, BirdDad, CSV, DataFrames, Distributions, NewickTree
-import BirdDad: loglikelihood!, cm!
+using BenchmarkTools, DeadBird, CSV, DataFrames, Distributions, NewickTree
+import DeadBird: loglikelihood!, cm!
 ```
 
 ```
-┌ Info: Precompiling BirdDad [a6db34b6-ea8f-496d-a49f-6ef7ed1dec48]
+┌ Info: Precompiling DeadBird [a6db34b6-ea8f-496d-a49f-6ef7ed1dec48]
 └ @ Base loading.jl:1278
-┌ Warning: Package BirdDad does not have ForwardDiff in its dependencies:
-│ - If you have BirdDad checked out for development and have
+┌ Warning: Package DeadBird does not have ForwardDiff in its dependencies:
+│ - If you have DeadBird checked out for development and have
 │   added ForwardDiff as a dependency but haven't updated your primary
 │   environment's manifest file, try `Pkg.resolve()`.
-│ - Otherwise you may need to report an issue with BirdDad
-└ Loading ForwardDiff into BirdDad from project dependency, future warnings for BirdDad are suppressed.
-WARNING: Method definition loglikelihood(BirdDad.PhyloBDP{T, M, I} where I where M where T, Any) in module BirdDad at /home/arzwa/dev/BirdDad/src/countdag.jl:147 overwritten at /home/arzwa/dev/BirdDad/src/profile.jl:54.
+│ - Otherwise you may need to report an issue with DeadBird
+└ Loading ForwardDiff into DeadBird from project dependency, future warnings for DeadBird are suppressed.
+WARNING: Method definition loglikelihood(DeadBird.PhyloBDP{T, M, I} where I where M where T, Any) in module DeadBird at /home/arzwa/dev/DeadBird/src/countdag.jl:147 overwritten at /home/arzwa/dev/DeadBird/src/profile.jl:54.
   ** incremental compilation may be fatally broken for this module **
 
 
@@ -188,14 +188,14 @@ algorithm
    dag, b = CountDAG(X, s, tree)
    rates  = RatesModel(ConstantDLG(λ=r[1], μ=r[2], κ=.0, η=η))
    model1 = PhyloBDP(rates, tree, b)
-   ℓ1 = BirdDad.loglikelihood!(dag, model1)
-   t1 = @benchmark BirdDad.loglikelihood!($(dag), $(model1))
+   ℓ1 = DeadBird.loglikelihood!(dag, model1)
+   t1 = @benchmark DeadBird.loglikelihood!($(dag), $(model1))
    @printf "cm: ℓ = %.3f, t = %6.3f, m = %.3f\n" ℓ1 mean(t1.times)/1000 mean(t1.allocs)/1000
-   dag_   = BirdDad.nonlineardag(dag, bound)
+   dag_   = DeadBird.nonlineardag(dag, bound)
    rates  = RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=bound))
    model2 = PhyloBDP(rates, tree, bound)
-   ℓ2 = BirdDad.loglikelihood!(dag_, model2)
-   t2 = @benchmark BirdDad.loglikelihood!($(dag_), $(model2))
+   ℓ2 = DeadBird.loglikelihood!(dag_, model2)
+   t2 = @benchmark DeadBird.loglikelihood!($(dag_), $(model2))
    m, a, n = mean(t2.times)/1000 mean(t2.allocs)/1000 size(model2.rates.params.Q)[1]
    @printf "tr: ℓ = %.3f, t = %6.3f, m = %.3f, bound = %d\n\n" ℓ2 m a n
 

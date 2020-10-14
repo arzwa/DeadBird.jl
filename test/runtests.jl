@@ -1,5 +1,5 @@
 using Pkg; Pkg.activate(@__DIR__)
-using Test, LightGraphs, NewickTree, BirdDad, TransformVariables
+using Test, LightGraphs, NewickTree, DeadBird, TransformVariables
 using DelimitedFiles, Random
 Random.seed!(624)
 
@@ -9,7 +9,7 @@ const ML = false
 
 @test isempty(Test.detect_ambiguities(Base, Core, YourPackage))
 
-@testset "BirdDad tests" begin
+@testset "DeadBird tests" begin
     include("model.jl")
     ML && include("mle.jl")
 end

@@ -1,7 +1,7 @@
 [deps]
 BandedMatrices = "aae01518-5342-5314-be14-df237901396f"
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
-BirdDad = "a6db34b6-ea8f-496d-a49f-6ef7ed1dec48"
+DeadBird = "a6db34b6-ea8f-496d-a49f-6ef7ed1dec48"
 DelimitedFiles = "8bb1440f-4735-579b-a4ab-409b98df4dab"
 KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
 LightGraphs = "093fc24a-ae57-5d10-9952-331d41423f4d"

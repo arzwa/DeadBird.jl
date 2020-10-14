@@ -1,5 +1,5 @@
 #using Pkg; Pkg.activate(@__DIR__)
-using Test, NewickTree, BirdDad, Turing
+using Test, NewickTree, DeadBird, Turing
 using DelimitedFiles, Random, Distributions, CSV
 
 Random.seed!(624)
@@ -27,7 +27,7 @@ chain = sample(bmodel, NUTS(0.65), 1000);
 
 
 # ProfileMatrix
-matrix, bound = BirdDad.ProfileMatrix(df, tree)
+matrix, bound = DeadBird.ProfileMatrix(df, tree)
 
 @model familyrates(matrix, model, ::Type{T}=Float64) where T = begin
     n = size(matrix)[1]
@@ -47,7 +47,7 @@ chain = sample(bmodel, NUTS(0.65), 200);
 
 # Gain model for core families
 core = df[filter(i->all(Array(df[i,:]) .> 0), 1:size(df)[1]), :]
-dag, bound = BirdDad.CountDAG(core .- 1, tree)
+dag, bound = DeadBird.CountDAG(core .- 1, tree)
 
 rates = RatesModel(ConstantDLG(λ=.1, μ=.13, κ=.1, η=1/1.5), 
                    fixed=(), rootprior=:geometric)

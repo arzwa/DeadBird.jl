@@ -1,9 +1,7 @@
-module BirdDad
-# DeadBird, BirthdayDad, BirdHat, ...
+module DeadBird
 
 using NewickTree
 using Parameters
-using StatsFuns
 using Distributions
 using LightGraphs
 using StatsBase
@@ -11,9 +9,9 @@ using StatsFuns
 using TransformVariables
 using DataFrames
 using BandedMatrices
-using ForwardDiff
+using ThreadTools
+using RecipesBase
 import StatsBase: loglikelihood
-# import FakeFamily: Params, RatesModel, getθ, trans
 
 include("mexp.jl")
 include("rmodels.jl")
@@ -24,15 +22,10 @@ include("linear.jl")
 include("nonlinear.jl")
 include("dlsim.jl")
 include("ppsim.jl")
+include("utils.jl")
 
 export CountDAG, ProfileMatrix, Profile
-export ConstantDLG, DLG, RatesModel, PhyloBDP, ConstantDLSC
-export simulate_profile
-
-# TODO:
-# - WGDs in matrix based approach
-# - Dirichlet process mixture
-# - Regression
-# - Ancestral states https://gitlab.psb.ugent.be/arzwa/beluga/blob/reversible-jump/src/_em.jl
+export ConstantDLG, DLG, RatesModel, PhyloBDP, ConstantDLSC, ModelArray
+export simulate_profile, simulate_profile_ma
 
 end # module

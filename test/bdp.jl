@@ -4,7 +4,7 @@ using Test
 
 @testset "Basics" begin
     # Numerical stability of ϕ and ψ
-    import BirdDad: getϕψ, getϕψ′, extp
+    import DeadBird: getϕψ, getϕψ′, extp
     for l=-15:2:15, m=-15:2:15, t=-10:2:10
         λ = exp(l); μ = exp(m); t = exp(t)
         ϕ, ψ = getϕψ(t, λ, μ)

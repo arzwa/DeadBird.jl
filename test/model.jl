@@ -1,5 +1,5 @@
 using Pkg; Pkg.activate(@__DIR__)
-using Test, LightGraphs, NewickTree, BirdDad, TransformVariables
+using Test, LightGraphs, NewickTree, DeadBird, TransformVariables
 using Random, Distributions, CSV
 Random.seed!(624)
 
@@ -8,8 +8,8 @@ const datadir = joinpath(@__DIR__, "../example")
 readtree = readnw ∘ readline
 
 @testset "CountDAG and Profile" begin
-    df = CSV.read(joinpath(datadir, "9dicots-f01-25.csv"))
-    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-25.csv"))
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
     dag, bound = CountDAG(df, tr)
     mat, bound = ProfileMatrix(df, tr)
     g = dag.graph
@@ -17,26 +17,26 @@ readtree = readnw ∘ readline
     @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(df)[1]
     r = RatesModel(ConstantDLG(λ=0.1, μ=.12, κ=0.0, η=0.9))
     m = PhyloBDP(r, tr, bound)
-    @test BirdDad.loglikelihood!(dag, m) ≈ -251.0360331682765
-    @test BirdDad.loglikelihood!(mat, m) ≈ -251.0360331682765
+    @test DeadBird.loglikelihood!(dag, m) ≈ -251.0360331682765
+    @test DeadBird.loglikelihood!(mat, m) ≈ -251.0360331682765
 end
 
 @testset "Profiles" begin
-    df = CSV.read(joinpath(datadir, "9dicots-f01-100.csv"))
-    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
     dag, bound = CountDAG(df, tr)
     for i=1:10
-        matrix, bound = BirdDad.ProfileMatrix(df, tr)
+        matrix, bound = DeadBird.ProfileMatrix(df, tr)
         rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
         model = PhyloBDP(rates(randn(2)), tr, bound)
-        l1 = BirdDad.loglikelihood!(matrix, model)
-        l2 = BirdDad.loglikelihood!(dag, model)
+        l1 = DeadBird.loglikelihood!(matrix, model)
+        l2 = DeadBird.loglikelihood!(dag, model)
         @test l1 ≈ l2
     end
 end
 
 @testset "Drosophila data, DAG vs. matrix" begin
-    import BirdDad: loglikelihood!
+    import DeadBird: loglikelihood!
     df = CSV.read(joinpath(datadir, "drosophila/counts-oib.csv"))
     tr = readtree(joinpath(datadir, "drosophila/tree.nw"))
     dag, bound = CountDAG(df, tr)
@@ -54,7 +54,7 @@ end
 end
 
 @testset "Drosophila data, DAG vs. matrix vs. WGDgc" begin
-    import BirdDad: loglikelihood!
+    import DeadBird: loglikelihood!
     df = CSV.read(joinpath(datadir, "drosophila/counts-oib.csv"))
     tr = readtree(joinpath(datadir, "drosophila/tree.nw"))
     wgdgc = CSV.read(joinpath(datadir, "drosophila/wgdgc-largest-l1.0-m1.0.csv"))
@@ -103,7 +103,7 @@ end
     dag, bound = CountDAG(X, s, tree)
     r = RatesModel(ConstantDLG(λ=.2, μ=.3, κ=0.0, η=0.9))
     m = PhyloBDP(r, tree, bound)
-    ℓ = BirdDad.loglikelihood!(dag, m)
+    ℓ = DeadBird.loglikelihood!(dag, m)
     @test isapprox(ℓ, -19.624930615416645, atol=1e-6)
     wgdgc = [-Inf, -13.032134, -10.290639, -8.968442, -8.413115,
              -8.380409, -8.78481, -9.592097, -10.801585, -12.448171,
@@ -111,15 +111,15 @@ end
     for i=1:length(wgdgc)
         @test isapprox(dag.parts[end][i], wgdgc[i], atol=1e-6)
     end
-    root = BirdDad.root(m)
+    root = DeadBird.root(m)
     @test isapprox(root.data.ϵ[2],    log(0.81766934), atol=1e-6)
     @test isapprox(root[1].data.ϵ[1], log(0.93828483), atol=1e-6)
     @test isapprox(root[2].data.ϵ[1], log(0.87145109), atol=1e-6)
 end
 
 @testset "MixtureModel" begin
-    df = CSV.read(joinpath(datadir, "9dicots-f01-100.csv"))
-    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
     dag, bound = CountDAG(df, tr)
     rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0.1, η=1/1.5))
     model = PhyloBDP(rates, tr, bound)
@@ -133,19 +133,19 @@ end
 
 # not supported anymore?
 @testset "Non-linear models, ConstantDLSC" begin
-    import BirdDad: ConstantDLSC
-    df = CSV.read(joinpath(datadir, "9dicots-f01-100.csv"))
-    tr = readtree(joinpath(datadir, "9dicots.nw"))
+    import DeadBird: ConstantDLSC
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
     dag, bound = CountDAG(df, tr)
     rates = RatesModel(ConstantDLSC(λ=.1, μ=.1, μ₁=0.01, η=1/1.5, m=bound))
     model = PhyloBDP(rates, tr, bound)
 
-    dag = BirdDad.nonlineardag(dag, bound)
-    ℓ1 = BirdDad.loglikelihood!(dag, model)
+    dag = DeadBird.nonlineardag(dag, bound)
+    ℓ1 = DeadBird.loglikelihood!(dag, model)
 
     ps, bound = ProfileMatrix(df, tr)
-    ps = BirdDad.nonlinearprofile(ps, bound)
-    ℓ2 = BirdDad.loglikelihood!(ps, model)
+    ps = DeadBird.nonlinearprofile(ps, bound)
+    ℓ2 = DeadBird.loglikelihood!(ps, model)
     @test ℓ1 ≈ ℓ2
 
     # ConstantDLSC with μ₁ == μ should be identical to ConstantDL
@@ -156,16 +156,16 @@ end
 
         rates = RatesModel(ConstantDLG(λ=r[1], μ=r[2], κ=.0, η=η))
         model1 = PhyloBDP(rates, tr, bound)
-        ℓ1 = BirdDad.loglikelihood!(dag, model1)
+        ℓ1 = DeadBird.loglikelihood!(dag, model1)
 
-        dag_ = BirdDad.nonlineardag(dag, 10bound)
+        dag_ = DeadBird.nonlineardag(dag, 10bound)
         rates= RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=10bound))
         model2 = PhyloBDP(rates, tr, 10bound)
-        ℓ2 = BirdDad.loglikelihood!(dag_, model2)
+        ℓ2 = DeadBird.loglikelihood!(dag_, model2)
 
         ps, bound = ProfileMatrix(df, tr)
-        ps = BirdDad.nonlinearprofile(ps, 10bound)
-        ℓ3 = BirdDad.loglikelihood!(ps, model2)
+        ps = DeadBird.nonlinearprofile(ps, 10bound)
+        ℓ3 = DeadBird.loglikelihood!(ps, model2)
         @test ℓ1 ≈ ℓ2 ≈ ℓ3
     end
 end

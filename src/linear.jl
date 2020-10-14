@@ -223,6 +223,8 @@ Integrate the loglikelihood at the root for the conditional process, with the
 prior on the number of lineages existing (X) at the root a shifted geometric
 distribution with mean 1/η, i.e. X ~ Geometric(η)+1
 
+Σₙ ℓ[n] × Σᵢ (n+i, choose i) ϵⁱ(1-ϵ)ⁿ η(1-η)ⁿ⁺ⁱ⁻¹
+
 `ℓ[i]` is ℙ{data|Y=i}, where Y is the number of lineages at the root that leave
 observed descendants. `le` log extinction probablity lϵ.  This function
 computes ℙ{data|X} based on ℙ{data|Y} (right?).  Assumes at least one ancestral
@@ -238,6 +240,15 @@ gene.
     return p
 end
 
+"""
+    ∫rootgeometric(ℓ, η, ϵ)
+
+Σₙ ℓ[n] × Σᵢ (n+i, choose i) ϵⁱ(1-ϵ)ⁿ η(1-η)ⁿ⁺ⁱ
+
+There are two differences with the shifted geometric formula, (1) exponent to
+(1-η) is n+i instead of n+i-1, and (2) we start from the X=0 state, not the X=1
+state
+"""
 @inline function ∫rootgeometric(ℓ, η, lϵ)
     p = -Inf
     for i in 1:length(ℓ)

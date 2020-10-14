@@ -28,6 +28,7 @@ struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
 end
 
 Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
+Base.length(dag::CountDAG) = dag.nfam
 
 # An alternative implementation would be to directly implement a DAGNode type
 # with parents, children, the partial likelihood vector etc.
@@ -141,7 +142,7 @@ Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
     x::CountDAG) where {VF,VS,T} = loglikelihood!(copydag(x, T), m)
 
 Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
-Distributions.loglikelihood(m::MixtureModel{P}, x) where P<:PhyloBDP = logpdf(m, x)
+Distributions.loglikelihood(m::MixtureModel{Multivariate,Discrete,P}, x)  where P<:PhyloBDP = logpdf(m, x)
 
 # ## Notes
 # We need a data structure that summarizes the entire data set. Or find any

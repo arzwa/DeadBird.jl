@@ -1,8 +1,8 @@
 # # Benchmarks
 # To be used with Literate, to generate a markdown report.
 # Note, apparently, Literate cannot handle begin/end blocks?
-using BenchmarkTools, BirdDad, CSV, DataFrames, Distributions, NewickTree
-import BirdDad: loglikelihood!, cm!
+using BenchmarkTools, DeadBird, CSV, DataFrames, Distributions, NewickTree
+import DeadBird: loglikelihood!, cm!
 
 # The current date/time is
 using Dates
@@ -57,14 +57,14 @@ print_trials(map(x->x.mat, benchmarks))
 #    dag, b = CountDAG(X, s, tree)
 #    rates  = RatesModel(ConstantDLG(λ=r[1], μ=r[2], κ=.0, η=η))
 #    model1 = PhyloBDP(rates, tree, b)
-#    ℓ1 = BirdDad.loglikelihood!(dag, model1)
-#    t1 = @benchmark BirdDad.loglikelihood!($(dag), $(model1))
+#    ℓ1 = DeadBird.loglikelihood!(dag, model1)
+#    t1 = @benchmark DeadBird.loglikelihood!($(dag), $(model1))
 #    @printf "cm: ℓ = %.3f, t = %6.3f, m = %.3f\n" ℓ1 mean(t1.times)/1000 mean(t1.allocs)/1000
-#    dag_   = BirdDad.nonlineardag(dag, bound)
+#    dag_   = DeadBird.nonlineardag(dag, bound)
 #    rates  = RatesModel(ConstantDLSC(λ=r[1], μ=r[2], μ₁=r[2], η=η, m=bound))
 #    model2 = PhyloBDP(rates, tree, bound)
-#    ℓ2 = BirdDad.loglikelihood!(dag_, model2)
-#    t2 = @benchmark BirdDad.loglikelihood!($(dag_), $(model2))
+#    ℓ2 = DeadBird.loglikelihood!(dag_, model2)
+#    t2 = @benchmark DeadBird.loglikelihood!($(dag_), $(model2))
 #    m, a, n = mean(t2.times)/1000 mean(t2.allocs)/1000 size(model2.rates.params.Q)[1]
 #    @printf "tr: ℓ = %.3f, t = %6.3f, m = %.3f, bound = %d\n\n" ℓ2 m a n
 #end
