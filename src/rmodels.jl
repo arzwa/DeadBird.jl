@@ -18,6 +18,20 @@ function nonwgdchild end
 
 abstract type Params{T} end
 
+"""
+    RatesModel(params; fixed=(), rootprior=:shifted)
+
+# Example
+```julia-repl
+julia> rates = RatesModel(ConstantDLG(λ=0.1, μ=0.1), fixed=(:κ, :η))
+RatesModel with (:κ, :η) fixed
+ConstantDLG{Float64}
+  λ: Float64 0.1
+  μ: Float64 0.1
+  κ: Float64 0.0
+  η: Float64 0.66
+```
+"""
 struct RatesModel{T,M<:Params{T},V}
     params::M
     fixed ::Tuple
@@ -101,6 +115,7 @@ end
 
 """
     DLG{T}
+
 Simple branch-wise rates duplication-loss and gain model.  The prior
 distribution on the root is either geometric or shifted geometric with
 parameter η,

@@ -19,6 +19,19 @@ end
     ProfileMatrix([p[i](n+1, V) for i=1:nfamilies(p)])
 nonlinearprofile(p, bound) = p(bound)
 
+"""
+    ProfileMatrix(df::DataFrame, tree)
+
+Obtain a ProfileMatrix struct for a count dataframe.
+
+# Example
+```julia-repl
+julia> x = DeadBird.example_data();
+
+julia> mat, bound = ProfileMatrix(x.df, x.tr)
+(matrix = Profile{Float64,Int64}[2 1 … 0 1; 3 2 … 1 1; 7 3 … 0 4; 7 3 … 3 4], bound = 7)
+```
+"""
 ProfileMatrix(df, tree) = ProfileMatrix(Matrix(df), names(df), tree)
 function ProfileMatrix(matrix::Matrix, names, tree, T=Float64)
     colindex = Dict(string(s)=>i for (i,s) in enumerate(names))

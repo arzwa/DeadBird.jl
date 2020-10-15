@@ -1,8 +1,30 @@
 # Arthur Zwaenepoel (2020)
-# Simulate profiles directly for Linear BDPs
-# I think this is much more to the point (but does not simulate trees). Probably
-# should be the `rand` function. 
+# Simulate profiles directly for Linear BDPs This does not simulate trees, but
+# only counts. Probably should be the `rand` function. 
 # For posterior predictive simulations, this better be fast!
+"""
+    simulate_profile(m::ModelArray)
+    simulate_profile(m::MixtureModel, n)
+    simulate_profile(m::PhyloBDP, n)
+
+Simulate a set of random profiles from a phylogenetic birth-death model.
+
+# Example
+```julia-repl
+julia> x = DeadBird.example_data();
+
+julia> simulate_profile(x.model, 5)
+5×5 DataFrame
+│ Row │ A     │ B     │ C     │ rejected │ extinct │
+│     │ Int64 │ Int64 │ Int64 │ Int64    │ Int64   │
+├─────┼───────┼───────┼───────┼──────────┼─────────┤
+│ 1   │ 1     │ 1     │ 1     │ 0        │ 0       │
+│ 2   │ 1     │ 1     │ 1     │ 0        │ 0       │
+│ 3   │ 2     │ 2     │ 2     │ 0        │ 0       │
+│ 4   │ 0     │ 1     │ 1     │ 1        │ 1       │
+│ 5   │ 1     │ 1     │ 1     │ 0        │ 0       │
+```
+"""
 function simulate_profile(m::ModelArray)
     # Assumes a random profile should be drawn for each model in the `ModelArray`
     idx, f, cols = prepare_sim(m[1])

@@ -37,6 +37,28 @@ consideration.
 !!! note: implemented as a `<: DiscreteMultivariateDistribution`
     (for convenience with Turing.jl), however does not support
     a lot of the Distributions.jl interface.
+
+# Example
+```julia-repl
+julia> x = DeadBird.example_data();
+
+julia> rates = RatesModel(ConstantDLG(λ=0.1, μ=0.1));
+
+julia> dag, bound = CountDAG(x.df, x.tr);
+
+julia> rates = RatesModel(ConstantDLG(λ=0.1, μ=0.1));
+
+julia> PhyloBDP(rates, x.tr, bound)
+PhyloBDP(
+~root
+RatesModel with () fixed
+ConstantDLG{Float64}
+  λ: Float64 0.1
+  μ: Float64 0.1
+  κ: Float64 0.0
+  η: Float64 0.66
+)
+```
 """
 mutable struct PhyloBDP{T,M,I} <: DiscreteMultivariateDistribution
     rates::M

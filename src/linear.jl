@@ -19,11 +19,11 @@ probify(x) = max(min(x, one(x)), zero(x))
 """
     getϕψ(t, λ, μ)
 
-Returns `ϕ = μ(eʳ - 1)/(λeʳ - μ)` where `r = t*(λ-μ)` and `ψ = ϕ*λ/μ`, with
-special cases for λ ≈ μ. These methods should be implremented as to prevent
-underflow/overflow issues.  Note these quantities are also called p and q (in
-Csuros & Miklos) or α and β (in Bailey). Note that ϕ = P(Xₜ=0|X₀=1), i.e. the
-extinction probability for a single particle.
+[Not exported] Returns `ϕ = μ(eʳ - 1)/(λeʳ - μ)` where `r = t*(λ-μ)` and `ψ =
+ϕ*λ/μ`, with special cases for λ ≈ μ. These methods should be implremented as
+to prevent underflow/overflow issues.  Note these quantities are also called p
+and q (in Csuros & Miklos) or α and β (in Bailey). Note that ϕ = P(Xₜ=0|X₀=1),
+i.e. the extinction probability for a single particle.
 """
 function getϕψ(t, λ, μ)
     if isapprox(λ, μ, atol=ΛMTOL)
@@ -46,9 +46,10 @@ end
 """
     extp(t, λ, μ, ϵ)
 
-Compute the extinction probability of a single lineage evolving according to a
-linear BDP for time `t` with rate `λ` and `μ` and with extinction probability
-of a single lineage at `t` equal to `ϵ`. This is `∑ᵢℙ{Xₜ=i|X₀=1}ϵ^i`
+[Not exported] Compute the extinction probability of a single lineage evolving
+according to a linear BDP for time `t` with rate `λ` and `μ` and with
+extinction probability of a single lineage at `t` equal to `ϵ`. This is
+`∑ᵢℙ{Xₜ=i|X₀=1}ϵ^i`
 """
 function extp(t, λ, μ, ϵ)
     # XXX: takes ϵ on probability scale!
@@ -74,13 +75,13 @@ setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
 """
     getϕψ′(ϕ, ψ, ϵ)
 
-Note that we take ϵ on a probability scale!
+[Not exported] Note that we take ϵ on a probability scale!
 ```
 ϕ′ = [ϕ(1-ϵ) + (1-ψ)ϵ]/[1 - ψϵ]
 ψ′ = [ψ(1-ϵ)]/[1-ψϵ]
 ```
-Some edge cases are when ϵ is 1 or 0. Other edge cases
-may be relevant when ψ and or ϕ is 1 or 0.
+Some edge cases are when ϵ is 1 or 0. Other edge cases may be relevant when ψ
+and or ϕ is 1 or 0.
 """
 function getϕψ′(ϕ, ψ, ϵ)
     ϵ ≈ one(ϵ)  && return one(ϕ), zero(ψ)

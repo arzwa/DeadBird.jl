@@ -7,17 +7,19 @@ struct NodeData{I}
 end
 
 """
-    CountDAG{T,G,I}
+    CountDAG(df::DataFrame, tree::Node)
 
-The directed acyclic graph (DAG) representation of a phylogenetic profile for
-an (assumed known) species tree.  This is a
-[multitree](https://en.wikipedia.org/wiki/Multitree)
+Get a `CountDAG` from a count matrix The directed acyclic graph (DAG)
+representation of a phylogenetic profile for an (assumed known) species tree.  
+This is a [multitree](https://en.wikipedia.org/wiki/Multitree)
 
-    CountDAG(matrix, header, tree::Node)
+# Example
+```julia-repl
+julia> x = DeadBird.example_data();
 
-Build the gene count DAG from `matrix` with a `header` corresponding to leaf
-names of `tree`.  Returns the bound as well (for the PhyloBDP model
-constructor).
+julia> dag = CountDAG(x.df, x.tr)
+(dag = CountDAG({17, 20} directed simple Int64 graph), bound = 7)
+```
 """
 struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
     graph ::SimpleDiGraph{G}  # the DAG, with vertices ordered in a post-order
@@ -79,20 +81,12 @@ function CountDAG(matrix::Matrix, names, tree)
     (dag=cdag, bound=bound)
 end
 
-# We might want to implement a dedicated DAG builder for single gene families,
-# in a way that we can use the same functions for computing the likelihood etc.
-# when we do not want to lump all the data together
-# (because of different model parameters for different families).
-# NOTE: well we have the profile matrix now, but still
-# it could be interesting to be able to efficiently obtain 'subgraphs'
-# from the CountDAG.
-
 """
     add_leaves!(dag, ndata, parts, x, n)
 
-For a species tree leaf node `n`, this adds the vector of (gene) counts `x` for
-that species to the graph.  This returns for each gene family the corresponding
-node that was added to the graph
+[Not exported] For a species tree leaf node `n`, this adds the vector of (gene)
+counts `x` for that species to the graph.  This returns for each gene family
+the corresponding node that was added to the graph
 """
 function add_leaves!(dag, ndata, parts, x, n)
     idmap = Dict()
@@ -108,8 +102,8 @@ end
 """
     add_internal!(dag, ndata, parts, x, n)
 
-For a species tree internal node `n`, this adds the gene family nodes
-associated with `n` to the graph and provides the bound on the number of
+[Not exported] For a species tree internal node `n`, this adds the gene family
+nodes associated with `n` to the graph and provides the bound on the number of
 lineages that survive to the present below `n` for each gene family.  Note that
 `x` is a vector of tuples of DAG nodes that each will be joined into a newly
 added node.  The resulting nodes are returned.

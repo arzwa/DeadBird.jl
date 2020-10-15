@@ -81,34 +81,6 @@ function getmin(sims::PPSim)
     minimum(xs)
 end
 
-@userplot PPPlot2
-@recipe function f(x::PPPlot2)
-    @unpack sims, data, N, n = x.args[1]
-    grid --> false
-    legend --> false
-    xguide --> "\$n\$"
-    yguide --> "\$\\epsilon\$"
-    layout --> length(data)
-    xscale --> :log10
-    for (i,(k,v)) in enumerate(data)
-        @series begin
-            seriestype := :scatter
-            seriescolor --> :black
-            msim = mapslices(mean, sims[k], dims=2)
-            x = (v .- msim[1:length(v)]) ./ v
-            subplot := i
-            x
-        end
-        @series begin
-            subplot := i
-            seriestype := :hline
-            seriescolor --> :black
-            linestyle --> :dash
-            [0.]
-        end
-    end
-end
-
 function getsteps(X)
     X = mapslices(x->repeat(x, inner=2), X, dims=1)[1:end-1,:] 
     x = X[2:end,1]
@@ -203,3 +175,32 @@ end
         end
     end
 end
+
+@userplot PPPlot2
+@recipe function f(x::PPPlot2)
+    @unpack sims, data, N, n = x.args[1]
+    grid --> false
+    legend --> false
+    xguide --> "\$n\$"
+    yguide --> "\$\\epsilon\$"
+    layout --> length(data)
+    xscale --> :log10
+    for (i,(k,v)) in enumerate(data)
+        @series begin
+            seriestype := :scatter
+            seriescolor --> :black
+            msim = mapslices(mean, sims[k], dims=2)
+            x = (v .- msim[1:length(v)]) ./ v
+            subplot := i
+            x
+        end
+        @series begin
+            subplot := i
+            seriestype := :hline
+            seriescolor --> :black
+            linestyle --> :dash
+            [0.]
+        end
+    end
+end
+
