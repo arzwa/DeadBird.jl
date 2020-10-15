@@ -1,4 +1,9 @@
+"""
+    PPPSim
 
+Container for posterior predictive simulations, constructor should not be
+called directly nor exported.
+"""
 struct PPSim{T,V}
     mfun::Function
     data::T
@@ -9,6 +14,23 @@ end
 
 Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N = $(x.N), n = $(x.n))")
 
+"""
+    simulate(mfun::Function, data::DataFrame, chain, N)
+
+Perform posterior predictive simulations. `mfun` should be a function
+that takes an iterate of the `chain` and returns a `PhyloBDP` model, 
+i.e. `mfun(chain[i])` should return a parameterized model. `data` is
+the observed data set to which posterior predictive simulations should
+correspond.
+
+# Example
+```
+julia> x = DeadBird.example_data();
+
+julia> DeadBird.simulate(y->x.model((λ=y, μ=y)), x.df, ones(10), 100)
+PP simulations (N = 100, n = 10)
+```
+"""
 function simulate(mfun::Function, data::DataFrame, chain, N=nrow(data))    
     simfun = i->simulate_profile(mfun(chain[i]), N) |> leafpmf 
     Ypp = tmap(simfun, 1:length(chain))
@@ -49,7 +71,7 @@ function quantiles(sims::Matrix; trans=log10, qs=[0.025, 0.975])
     Yk = trans.(sims .+ ϵ)
     Qs = mapslices(x->vcat(mean(x), quantile(x, [0.025, 0.975])), Yk, dims=2)
     Qs[:,2] .= abs.(Qs[:,2] .- Qs[:,1])
-    Qs[:,3] .= Qs[:,3] .- Qs[:,1]
+    Qs[:,3] .= abs.(Qs[:,3] .- Qs[:,1])
     Qs
 end
 
@@ -87,32 +109,51 @@ end
     end
 end
 
-@userplot StepPlot
-@recipe function f(x::StepPlot)
-    X = x.args[1]
-    vert = length(x.args) == 2 ? x.args[end] : true
-    a = size(X)[1]
+function getsteps(X)
     X = mapslices(x->repeat(x, inner=2), X, dims=1)[1:end-1,:] 
-    xs = repeat(1:a, inner=2)[2:end] .+ 0.
-    xs[2:end] .-= 0.5
-    seriestype --> :path
-    seriescolor --> :black
-    fillalpha --> 0.2
-    grid --> false
-    legend --> false
-    if size(X)[2] > 2
-        ribbon --> (X[:,2], X[:,3])
+    x = X[2:end,1]
+    y = X[1:end-1,2:end]
+    (x=x, y=y)
+end
+
+@recipe function f(::Type{Val{:stepplot}}, plt::AbstractPlot)
+    y = plotattributes[:y]
+    x = plotattributes[:x]
+    a = length(y)
+    rib = !isnothing(plotattributes[:ribbon])
+    if rib
+        l, u = plotattributes[:fillrange]
+        X = [x y l u]
+    else
+        X = [x y]
     end
+    x_, y_ = getsteps(X)
+    seriestype   := :path
+    seriescolor --> :black
+    fillalpha   --> 0.1
+    grid        --> false
+    legend      --> false
+    vert = haskey(plotattributes, :vert) ? 
+        plotattributes[:vert] : true
     if vert
-        xs, X[:,1]
+        x := x_
+        y := y_[:,1]
+        if rib
+            fillrange := (y_[:,2], y_[:,3])
+        end
     else
         for i=1:2:length(xs)-1
             @series begin
-                xs[i:i+1], X[i:i+1,1]
+                x := x_[i:i+1]
+                y := y_[i:i+1,1]
+                if rib 
+                    fillrange := (y_[i:i+1,2], y_[i:i+1,3])
+                end
             end
         end
     end
 end
+@shorthands stepplot
 
 @recipe function f(pps::PPSim)
     @unpack data, sims = pps
@@ -122,29 +163,43 @@ end
     legend --> false
     grid   --> false
     layout --> length(data) 
-    yscale --> :log10
     xscale --> :log10
     ϵ = getmin(pps) / 10
-    ylims  --> (5ϵ, 0)
     
     for (i, (k,v)) in enumerate(data)
+        sp = join(split(string(k), "_"), " ")
+        Qs = quantiles(sims[k])
+        x, y = getsteps([1:size(Qs)[1] Qs])
+        v[v .== 0.] .= ϵ 
+        v = log10.(v)
+        c = [Qs[j,1] - Qs[j,2] < v[j] < Qs[j,1] + Qs[j,3] ? 
+             :black : :white for j=1:length(v)]
+
         @series begin
+            subplot := i
+            title := sp
+            titlefontfamily := :italic
+            titlefont := 8
+            titlelocation --> :left
             seriestype := :path
             seriescolor --> :black
-            sims[k][:,1] .+ ϵ
+            fillalpha   --> 0.2
+            ribbon --> (y[:,2], y[:,3])
+            x, y[:,1]
         end
 
         @series begin
+            subplot := i
+            title := sp
+            titlefontfamily := :italic
+            titlefont := 8
+            titlelocation --> :left
             markershape --> :circle
             markersize  --> 3
             seriestype := :scatter
-            seriescolor --> :white
-            subplot := i
-            title := k
-            titlefontfamily := :italic
-            titlefont := 8
-            #yscale := :log10
-            v .+ ϵ
+            seriescolor --> c
+            x = collect(1:length(v)) .+ 0.5
+            x, v
         end
     end
 end
