@@ -27,7 +27,7 @@ i.e. the extinction probability for a single particle.
 """
 function getϕψ(t, λ, μ)
     if isapprox(λ, μ, atol=ΛMTOL)
-        ϕ = probify(λ*t/(one(λ) + λ*t) )
+        ϕ = probify(λ*t/(one(λ) + λ*t))
         return ϕ, ϕ
     else
         r = exp(t*(λ-μ))
@@ -90,8 +90,8 @@ function getϕψ′(ϕ, ψ, ϵ)
     a = one(ϵ) - ϵ
     ϕ′ = (ϕ*a + (one(ψ)-ψ)ϵ)/c
     ψ′ = ψ*(one(ϵ)-ϵ)/c
-    any([ϕ′, ψ′] .> one(ϵ)) && @warn "Problem!" ϕ ψ ϵ ϕ′ ψ′
-    any([ϕ′, ψ′] .< zero(ϵ)) && @warn "Problem!" ϕ ψ ϵ ϕ′ ψ′
+    any([ϕ′, ψ′] .> one(ϵ))  && @debug "Problem!" ϕ ψ ϵ ϕ′ ψ′
+    any([ϕ′, ψ′] .< zero(ϵ)) && @debug "Problem!" ϕ ψ ϵ ϕ′ ψ′
     probify(ϕ′), probify(ψ′)
 end
 
@@ -151,9 +151,10 @@ function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '0
     ϕ′, ψ′ = getϕψ′(ϕ, ψ, exp(ϵ))
     a = 1. - ϕ′
     b = 1. - ψ′
-    c = log(a) + log(b)
-    d = log(ψ′)
+    c = log(a) + log(b)  # (1-p')*(1-q') in Csuros
+    d = log(ψ′)  # q' in Csuros
     (κ/λ > zero(κ)) && (b > zero(b)) ? # gain model
+        # if κ = λ this is a geometric pmf...
         w[1,:] = logpdf.(NegativeBinomial(κ/λ, b), 0:l) :
         w[1,1] = zero(T)
     for m=1:l, n=1:m
@@ -212,8 +213,10 @@ function conditionfactor(model)
         nonextinctfromrootcondition(model)
     #elseif model.cond == :nowhere
     #    extinctnowherecondition(model)
-    else
+    elseif model.cond == :none
         0.
+    else
+        throw("Condition not implemented! $(model.cond)")
     end
 end
 
@@ -365,7 +368,7 @@ end
 # Major refactor
 # Somwehat more intelligle, and doesn't allocate large matrices. However, it
 # is not faster (but numerically more stable). It should be more amenable to
-# furtther optimizations though...
+# further optimizations though...
 """
     cm!(dag, node, model)
 
@@ -399,12 +402,15 @@ end
     # n is a node from the model
     @unpack x, ℓ = profile
     bound = length(ℓ[id(n)])
-    # if the bound is 0 or we're at a leaf, there is only 
-    # one possible state.
-    if isleaf(n) || x[id(n)] == 0  # leaf case
+    # Note, it is not true that this should be 0 when the bound is 0 and
+    # we're not at a leaf! This is the likelihood!
+    if isleaf(n) #|| x[id(n)] == 0  # leaf case
         ℓ[id(n)][x[id(n)]+1] = zero(T)
         return
     end
+    # It would be better if we could work away all these temporary arrays
+    # we often don't need them since e.g. cumulative stuff can be updated
+    # within the inner loop...
     kids = children(n)
     kmax = [x[id(k)] for k in kids]
     kcum = cumsum([0 ; kmax])
@@ -414,20 +420,48 @@ end
     cm_inner!(ℓ[id(n)], ℓ, model, kidid, kidid, kcum, kmax, keps, ϵcum)
 end
 
+"""
+ℓi    := the likelihood vector to compute
+ℓ     := all likelihood vectors (we need those of the children)
+model := the full model struct
+midx  := indices of daughter nodes in the model struct (i.e. `model[midx[i]]` 
+         gives a daughter node) 
+lidx  := indices of daughter nodes in the likelihood vectors
+kc    := cumulative maximum number of surviving lineages for kids
+km    := maximum number of surviving lineages for the kids
+ke    := extinction probabilities for child branches
+ϵc    := cumulative extinction probabilities
+"""
 @inline function cm_inner!(
         ℓi, ℓ, model, midx, lidx, kc, km, ke, ϵc::Vector{T}) where T
     # not sure if correct for polytomies... I guess almost but not quite?
     #@info "cm inner" ℓi ℓ model midx lidx kc km ke ϵc
+    # NOTE: perhaps inner part of the loop should be another function...
     for i=1:length(midx)
-        if kc[i+1] == 0
-            ℓi[1] = zero(T)
-            continue
-        end
         @unpack W = model[midx[i]].data
         B = cm_getB(T, W, ℓ[lidx[i]], kc[i], kc[i+1], km[i], ke[i])
         i == 1 ?
             cm_getA1!(ℓi, B, kc[2], ϵc[2], ke[1]) : 
             cm_getAi!(ℓi, B, kc[i], kc[i+1], ϵc[i], ϵc[i+1], km[i], ke[i])    
+    end
+end
+
+# cleaner... but harder to get to work for both DAG and profile
+function cm_inner_bis!(ℓ, x, n, model, ::Type{T}) where T
+    kcum = 0
+    ϵcum = zero(T)
+    for (i,ki) in enumerate(children(n))
+        @unpack W = model[id(ki)].data
+        kmaxi = x[id(ki)]
+        extpi = getϵ(ki, 1)
+        kcum′ = kcum + kmaxi
+        ϵcum′ = ϵcum + extpi
+        B = cm_getB(T, W, ℓ[id(ki)], kcum, kcum′, kmaxi, ϵcum)
+        i == 1 ? 
+            cm_getA1!(ℓ[id(n)], B, kcum′, ϵcum′, ϵcum) :
+            cm_getAi!(ℓ[id(n)], B, kcum, kcum′, ϵcum, ϵcum′, kmaxi, extpi)
+        kcum = kcum′
+        ϵcum = ϵcum′
     end
 end
 
@@ -476,14 +510,16 @@ end
 end
 
 @inline function cm_getAi!(A::Vector{T}, B, k1, k2, ϵ1, ϵ2, mi, lϵ₁) where T
+    #@info "cm_getAi" k1 k2 ϵ1 ϵ2 mi
     Aᵢ = fill(T(-Inf), k2+1)
     p = exp(ϵ1)
     l1me = log1mexp(ϵ2)
-    for n=1:k2
+    for n=0:k2 
         tmax = min(k1, n)
         tmin = max(n-mi, 0)
         for t=tmin:tmax
             s = n-t
+            # n, t and s correspond to 0-based indices (true counts)
             @inbounds lp = binomlogpdf(n, p, s) + A[t+1] + B[s+1,t+1]
             @inbounds Aᵢ[n+1] = logaddexp(Aᵢ[n+1], lp)
         end

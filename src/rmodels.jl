@@ -21,6 +21,14 @@ abstract type Params{T} end
 """
     RatesModel(params; fixed=(), rootprior=:shifted)
 
+!!! note 
+    `rootprior` currently takes a symbol `:shifted | :geometric`, but in the
+    future should likely become a type...
+
+!!! note
+    Having the transforms in there is getting obsolete given that we use Turing
+    exclusively...
+
 # Example
 ```julia-repl
 julia> rates = RatesModel(ConstantDLG(λ=0.1, μ=0.1), fixed=(:κ, :η))
@@ -44,7 +52,8 @@ RatesModel(θ; fixed=(), rootprior=:shifted) =
 
 Base.eltype(m::RatesModel{T}) where T = T
 Base.show(io::IO, m::RatesModel) = write(io,
-    "RatesModel with $(m.fixed) fixed\n$(m.params)")
+    "RatesModel with $(m.fixed) fixed and "*
+    "$(m.rootprior) prior on root\n$(m.params)")
 
 getθ(m::RatesModel, node) = getθ(m.params, node)
 getp(m::P, n) where {T,P<:Params{T}} = hasfield(P, :p) &&
@@ -88,7 +97,6 @@ promote_nt(nt) = (;zip(keys(nt), promote(nt...))...)
 
 getθ(m::ConstantDLG, node) = m
 trans(::ConstantDLG) = (λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀)
-Base.:*(m::ConstantDLG, x::Real) = ConstantDLG(λ=m.λ*x, μ=m.μ*x, κ=m.κ, η=m.η)
 function (::ConstantDLG)(θ)
     t = promote_nt(θ)
     ConstantDLG(; λ=t.λ, μ=t.μ, κ=t.κ, η=t.η)
@@ -140,7 +148,6 @@ trans(m::DLG) = (
     η=as𝕀)
 
 (::DLG)(θ) = DLG(; λ=θ.λ, μ=θ.μ, κ=θ.κ, η=eltype(θ.λ)(θ.η))
-Base.:*(m::DLG, x::Real) = DLG(λ=m.λ.*x, μ=m.μ.*x, κ=m.κ.*x, η=m.η)
 
 @with_kw struct DLGWGD{T} <: Params{T}
     λ::Vector{T}

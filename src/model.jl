@@ -102,15 +102,18 @@ end
 # These are two 'secondary constructors',
 # i.e. they establish a model based on an already available model structure
 # and a new set of parameters.
-# The first makes a copy, the second modifies the existing model.
+# The first two make a copy (the second only adapts the bound), while the last
+# modifies the existing model.
 (m::PhyloBDP)(θ, b=m.bound-1) = PhyloBDP(m.rates(θ), m.order[end], b, cond=m.cond)
+(m::PhyloBDP)(b::Int) = PhyloBDP(m.rates, m.order[end], b, cond=m.cond)
 function update!(m::PhyloBDP, θ)
     m.rates = m.rates(θ)
     setmodel!(m)
 end
 
 Base.getindex(m::PhyloBDP, i) = m.nodes[i]
-Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n~$(m.cond)\n$(m.rates))")
+Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n  "*
+    "condition: $(m.cond)\n  bound: $(m.bound) \n$(m.rates))")
 root(m::PhyloBDP) = m.order[end]
 NewickTree.getroot(m::PhyloBDP) = root(m)
 

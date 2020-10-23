@@ -11,6 +11,7 @@ using DataFrames
 using BandedMatrices
 using ThreadTools
 using RecipesBase
+using Printf
 import StatsBase: loglikelihood
 
 include("mexp.jl")

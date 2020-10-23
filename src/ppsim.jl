@@ -14,6 +14,19 @@ end
 
 Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N = $(x.N), n = $(x.n))")
 
+function qtable(x::PPSim; sp=Symbol[], xs=1:5)
+    sp = isempty(sp) ? collect(keys(x.data)) : sp
+    for n=xs
+        for (i,k) in enumerate(sp)
+            q1 = quantile(x.sims[k][n,:], 0.025)
+            q2 = quantile(x.sims[k][n,:], 0.975)
+            @printf "%.3f (%.3f, %.3f)" x.data[k][n] q1 q2
+            i == length(sp) ? nothing : print(" | ")
+        end
+        print("\n")
+    end
+end
+
 """
     simulate(mfun::Function, data::DataFrame, chain, N)
 
@@ -88,6 +101,11 @@ function getsteps(X)
     (x=x, y=y)
 end
 
+function pppvalue(x::PPSim, sp::Symbol, k) 
+    p = ecdf(x.sims[sp][k,:])(x.data[sp][k])
+    p > 0.5 ? 1 - p : p
+end
+
 @recipe function f(::Type{Val{:stepplot}}, plt::AbstractPlot)
     y = plotattributes[:y]
     x = plotattributes[:x]
@@ -136,7 +154,8 @@ end
     grid   --> false
     layout --> length(data) 
     xscale --> :log10
-    ϵ = getmin(pps) / 10
+    ϵ = 1/2pps.N
+    ylims --> (log10(ϵ), 0)
     
     for (i, (k,v)) in enumerate(data)
         sp = join(split(string(k), "_"), " ")
@@ -144,8 +163,8 @@ end
         x, y = getsteps([1:size(Qs)[1] Qs])
         v[v .== 0.] .= ϵ 
         v = log10.(v)
-        c = [Qs[j,1] - Qs[j,2] < v[j] < Qs[j,1] + Qs[j,3] ? 
-             :black : :white for j=1:length(v)]
+        c = [j > size(Qs)[1] || !(Qs[j,1] - Qs[j,2] < v[j] < Qs[j,1] + Qs[j,3]) ? 
+             :white : :black for j=1:length(v)]
 
         @series begin
             subplot := i

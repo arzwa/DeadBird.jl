@@ -25,13 +25,55 @@ end
     df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
     tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
     dag, bound = CountDAG(df, tr)
+    mat, bound = DeadBird.ProfileMatrix(df, tr)
     for i=1:10
-        matrix, bound = DeadBird.ProfileMatrix(df, tr)
         rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
         model = PhyloBDP(rates(randn(2)), tr, bound)
-        l1 = DeadBird.loglikelihood!(matrix, model)
+        l1 = DeadBird.loglikelihood!(mat, model)
         l2 = DeadBird.loglikelihood!(dag, model)
         @test l1 ≈ l2
+    end
+    for i=1:10
+        rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=())
+        model = PhyloBDP(rates(randn(4)), tr, bound)
+        l1 = DeadBird.loglikelihood!(mat, model)
+        l2 = DeadBird.loglikelihood!(dag, model)
+        @test l1 ≈ l2
+    end
+end
+
+@testset "Gain model..." begin
+    i=10
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))[i:i,:]
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
+    mat, bound = DeadBird.ProfileMatrix(df, tr)
+    rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=())
+    m = PhyloBDP(rates(randn(4)), tr, bound)
+    l1 = DeadBird.loglikelihood!(mat, m)
+    l2 = DeadBird.loglikelihood!(dag, m)
+    @test l1 ≈ l2
+end
+
+@testset "Gain/no gain" begin
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
+    for i=1:10
+        matrix, bound = DeadBird.ProfileMatrix(df, tr)
+        rates1 = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
+        model1 = PhyloBDP(rates1(randn(2)), tr, bound)
+        rates2 = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0.2, η=1/1.5), fixed=(:η,))
+        model2 = PhyloBDP(rates2(randn(3)), tr, bound)
+        l1 = DeadBird.loglikelihood!(matrix, model1)
+        l2 = DeadBird.loglikelihood!(dag, model1)
+        # some weak testing here...
+        @test all([x[1] == -Inf || x[1] == 0. for x in dag.parts])
+        @test all([x.ℓ[1][1] == -Inf for x in matrix.profiles])
+        l1 = DeadBird.loglikelihood!(matrix, model2)
+        l2 = DeadBird.loglikelihood!(dag, model2)
+        @test !all([x[1] == -Inf || x[1] == 0. for x in dag.parts]) 
+        @test !any([x.ℓ[1][1] == -Inf for x in matrix.profiles])
     end
 end
 
@@ -117,6 +159,24 @@ end
     @test isapprox(root[2].data.ϵ[1], log(0.87145109), atol=1e-6)
 end
 
+@testset "Branch rates" begin
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
+    n = length(postwalk(tr))
+    for i=1:10
+        λ, μ, κ = randn(3)
+        rates1 = RatesModel(ConstantDLG(λ=exp(λ), μ=exp(μ), κ=exp(κ), η=1/1.5))
+        rates2 = RatesModel(DLG(λ=fill(λ, n), μ=fill(μ, n), κ=fill(κ, n), η=1/1.5))
+        rates2.params.μ[1] = -Inf  # verify first doesn't matter (root) 
+        rates2.params.λ[1] = -Inf  
+        rates2.params.κ[1] = -Inf  
+        model1 = PhyloBDP(rates1, tr, bound)
+        model2 = PhyloBDP(rates2, tr, bound)
+        @test logpdf(model1, dag) == logpdf(model2, dag)
+    end
+end
+
 @testset "MixtureModel" begin
     df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
     tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
@@ -169,3 +229,5 @@ end
         @test ℓ1 ≈ ℓ2 ≈ ℓ3
     end
 end
+
+
