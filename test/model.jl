@@ -6,7 +6,7 @@ Random.seed!(624)
 # NOTE still needs NaN-safe mode enabled sometimes (when κ = 0 for instance)...
 const datadir = joinpath(@__DIR__, "../example")
 readtree = readnw ∘ readline
-
+ 
 @testset "CountDAG and Profile" begin
     df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-25.csv"))
     tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
