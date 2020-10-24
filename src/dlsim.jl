@@ -139,7 +139,7 @@ function randedge(rng::AbstractRNG, X, θ, t)
         X′+= u < p ? 0 : rand(rng, Geometric(one(q)-q)) + 1
     end  
     if r > zero(r)  # gain
-        X′+= rand(NegativeBinomial(rng, r, one(q)-q))
+        X′+= rand(rng, NegativeBinomial(r, one(q)-q))
     end
     return X′
 end
