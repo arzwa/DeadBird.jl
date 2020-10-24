@@ -45,13 +45,13 @@ PP simulations (N = 100, n = 10)
 ```
 """
 function simulate(mfun::Function, data::DataFrame, chain, N=nrow(data))    
-    simfun = i->simulate_profile(mfun(chain[i]), N) |> leafpmf 
+    simfun = i->simulate(mfun(chain[i]), N) |> leafpmf 
     Ypp = tmap(simfun, 1:length(chain))
     PPSim(mfun, leafpmf(data), combine_pmfs(Ypp), N, length(chain))
 end
 
 function simulate_ma(mfun::Function, data::DataFrame, chain)    
-    simfun = i->simulate_profile(mfun(chain[i])) |> leafpmf 
+    simfun = i->simulate(mfun(chain[i])) |> leafpmf 
     Ypp = tmap(simfun, 1:length(chain))
     PPSim(mfun, leafpmf(data), combine_pmfs(Ypp), nrow(data), length(chain))
 end
