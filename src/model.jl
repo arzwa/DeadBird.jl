@@ -126,3 +126,8 @@ function setmodel!(model::LPhyloBDP)
         setW!(n, rates)
     end
 end
+
+Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
+Distributions.loglikelihood(M::ModelArray, x) = logpdf(M, x)
+Distributions.loglikelihood(m::MixtureModel{Multivariate,Discrete,P}, 
+                            x) where P<:PhyloBDP = logpdf(m, x)

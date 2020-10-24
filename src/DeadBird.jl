@@ -15,13 +15,13 @@ using Printf
 using Random
 import StatsBase: loglikelihood
 
-include("mexp.jl")
+#include("mexp.jl")
 include("rmodels.jl")
 include("model.jl")
 include("countdag.jl")
 include("profile.jl")
 include("linear.jl")
-include("nonlinear.jl")
+#include("nonlinear.jl")
 include("dlsim.jl")
 include("ppsim.jl")
 include("utils.jl")
@@ -54,6 +54,6 @@ end
 
 export CountDAG, ProfileMatrix, Profile
 export ConstantDLG, DLG, RatesModel, PhyloBDP, ConstantDLSC, ModelArray
-export simulate_profile, simulate_profile_ma
+export simulate
 
 end # module

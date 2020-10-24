@@ -1,43 +1,16 @@
 # Arthur Zwaenepoel (2020)
 # Simulate profiles directly for *linear* BDPs This does not simulate trees,
-# but only counts. Probably should be the `rand` function. 
-# For posterior predictive simulations, this better be fast!
-# see: https://docs.julialang.org/en/v1/stdlib/Random/#An-optimized-sampler-with-pre-computed-data
-# A bit tricky that the Distributions.jl and Random interfaces for sampling are
-# different. I use the Random API here...
-#Distributions.rand(rng::AbstractRNG, m::LPhyloBDP) = rand(rng, Sampler(rng, m)) 
-#Distributions.rand(rng::AbstractRNG, m::LPhyloBDP, d::Int64) = rand(rng, Sampler(rng, m), d) 
-#
-#function Random.Sampler(::Type{<:AbstractRNG}, m::LPhyloBDP, ::Random.Repetition)
-#    idx  = getleafindex(m)
-#    f    = getcondition(m, idx)
-#    ks   = first.(sort(collect(idx), by=x->last(x)))
-#    cols = vcat(ks..., ["rejected", "extinct"])
-#    data = (idx=idx, f=f, cols=cols)
-#    Random.SamplerSimple(m, data) 
-#end
-#
-#Random.eltype(::Type{<:LPhyloBDP}) = Vector{Int}
-#
-#function Random.rand(rng::AbstractRNG, sp::Random.SamplerSimple{<:LPhyloBDP}) 
-#    @unpack self, data = sp
-#    @unpack idx, f, cols = data
-#    x = simulate_profile(rng, self, idx, f)  # TODO: pass rng...
-#end
-#
-#function Random.rand(rng::AbstractRNG, sp, d::Integer) 
-#    x = rand(rng, sp, Dims((d,)))
-#    X = hcat(x...) |> permutedims
-#    DataFrame(X, Symbol.(sp.data.cols))
-#end
-#
-#Random.rand(sp, d::Integer) = rand(Random.default_rng(), sp, d)
-#
-#Random.rand(rng::AbstractRNG, m::ModelArray) = vcat([rand(rng, x, 1) for x in m.models]...)
+# but only counts. Probably should be the `rand` function.  For posterior
+# predictive simulations, this better be fast!
 
-# for several reasons it seems more straightforward to not use the Random API
-# (but we do use a similar approach).
+# Because are structs are Distributions, the Random API is not so
+# straightforward and the Distributions API would be better, however, I prefer
+# generating DataFrames whereas multivariate samplers in Distributions generate
+# vectors and matrices. Also it's a bit tricky to use that API to get the
+# expected outputs for ModelArray, PhyloBDP and MixtureModel structs. I decided
+# to not extend the `rand` methods, but have a `simulate` function...
 
+# should not be exposed (a bit like the Sampler type in Random)
 struct ProfileSim{T}
     model::T
     idx  ::Dict
@@ -170,4 +143,40 @@ function randedge(rng::AbstractRNG, X, θ, t)
     end
     return X′
 end
+
+
+# This was my attempt at hooking into the Random API
+# see: https://docs.julialang.org/en/v1/stdlib/Random/ for the Random API
+# A bit tricky that the Distributions.jl and Random interfaces for sampling are
+# different. I use the Random API here...
+
+#Distributions.rand(rng::AbstractRNG, m::LPhyloBDP) = rand(rng, Sampler(rng, m)) 
+#Distributions.rand(rng::AbstractRNG, m::LPhyloBDP, d::Int64) = rand(rng, Sampler(rng, m), d) 
+#
+#function Random.Sampler(::Type{<:AbstractRNG}, m::LPhyloBDP, ::Random.Repetition)
+#    idx  = getleafindex(m)
+#    f    = getcondition(m, idx)
+#    ks   = first.(sort(collect(idx), by=x->last(x)))
+#    cols = vcat(ks..., ["rejected", "extinct"])
+#    data = (idx=idx, f=f, cols=cols)
+#    Random.SamplerSimple(m, data) 
+#end
+#
+#Random.eltype(::Type{<:LPhyloBDP}) = Vector{Int}
+#
+#function Random.rand(rng::AbstractRNG, sp::Random.SamplerSimple{<:LPhyloBDP}) 
+#    @unpack self, data = sp
+#    @unpack idx, f, cols = data
+#    x = simulate_profile(rng, self, idx, f)  # TODO: pass rng...
+#end
+#
+#function Random.rand(rng::AbstractRNG, sp, d::Integer) 
+#    x = rand(rng, sp, Dims((d,)))
+#    X = hcat(x...) |> permutedims
+#    DataFrame(X, Symbol.(sp.data.cols))
+#end
+#
+#Random.rand(sp, d::Integer) = rand(Random.default_rng(), sp, d)
+#
+#Random.rand(rng::AbstractRNG, m::ModelArray) = vcat([rand(rng, x, 1) for x in m.models]...)
 

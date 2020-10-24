@@ -5,11 +5,10 @@ Random.seed!(624)
 
 # NOTE still needs NaN-safe mode enabled sometimes (when κ = 0 for instance)...
 
-const ML = false
+const TURING = false
 
 @test isempty(Test.detect_ambiguities(Base, Core, YourPackage))
 
 @testset "DeadBird tests" begin
-    include("model.jl")
-    ML && include("mle.jl")
+    include("linear.jl")
 end

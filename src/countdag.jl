@@ -135,8 +135,6 @@ Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T =
 Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
     x::CountDAG) where {VF,VS,T} = loglikelihood!(copydag(x, T), m)
 
-Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
-Distributions.loglikelihood(m::MixtureModel{Multivariate,Discrete,P}, x)  where P<:PhyloBDP = logpdf(m, x)
 
 # ## Notes
 # We need a data structure that summarizes the entire data set. Or find any
