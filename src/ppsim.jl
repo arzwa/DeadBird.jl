@@ -12,19 +12,49 @@ struct PPSim{T,V}
     n::Int
 end
 
-Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N = $(x.N), n = $(x.n))")
+Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N = $(x.N), "* 
+                                    "n = $(x.n))\n$(printfdf(table(x)))")
 
-function qtable(x::PPSim; sp=Symbol[], xs=1:5)
-    sp = isempty(sp) ? collect(keys(x.data)) : sp
-    for n=xs
-        for (i,k) in enumerate(sp)
-            q1 = quantile(x.sims[k][n,:], 0.025)
-            q2 = quantile(x.sims[k][n,:], 0.975)
-            @printf "%.3f (%.3f, %.3f)" x.data[k][n] q1 q2
-            i == length(sp) ? nothing : print(" | ")
-        end
-        print("\n")
+function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=true)
+    sp = sp == :all ? collect(keys(x.data)) : sp
+    rows = []
+    for s in sp, n in xs
+        q1 = quantile(x.sims[s][n,:], 0.025)
+        q2 = quantile(x.sims[s][n,:], 0.975)
+        xn = x.data[s][n]
+        push!(rows, (species=_process_taxon(s), 
+                     quantity="f_$(kmin + n - 1)", 
+                     observed=xn, 
+                     interval=(q1,q2), 
+                     p=pppvalue(x, s, n)))
     end
+    DataFrame(rows)
+end
+
+function _process_taxon(x; abbr=true) 
+    xs = split(string(x), "_")
+    genus = xs[1][1] * "."
+    abbr ? "$genus $(join(xs[2:end], " "))" : join(xs, " ")
+end
+
+function exttable(x::PPSim, kmin=1)
+    map([:extinct, :rejected]) do s
+        (quantity="# $s", expectation=_getmean(x.sims[s], kmin))
+    end |> DataFrame
+end
+
+_getmean(pdf::Vector, xmin) = sum([(i-1+xmin)*x for (i,x) in enumerate(pdf)])
+_getmean(pdf::Matrix, xmin) = _getmean(vec(mapslices(mean, pdf, dims=2)), xmin)
+
+function printfdf(df)
+    numcols = names(df)[eltype.(eltypes(df)) .== Float64]
+    trfun = x->typeof(x) == Float64 ? (@sprintf "%.3f" x) : 
+        "("*join([(@sprintf "%.3f" y) for y in x], ", ")*")"
+    ddf = deepcopy(df)
+    for col in numcols
+        ddf = DataFrames.transform(ddf, col => ByRow(trfun) => col)
+    end
+    ddf
 end
 
 """
@@ -117,6 +147,7 @@ end
     else
         X = [x y]
     end
+    grid --> false
     x_, y_ = getsteps(X)
     seriestype   := :path
     seriescolor --> :black
@@ -126,13 +157,15 @@ end
     vert = haskey(plotattributes, :vert) ? 
         plotattributes[:vert] : true
     if vert
-        x := x_
-        y := y_[:,1]
-        if rib
-            fillrange := (y_[:,2], y_[:,3])
+        @series begin
+            x := x_
+            y := y_[:,1]
+            if rib
+                fillrange := (y_[:,2], y_[:,3])
+            end
         end
     else
-        for i=1:2:length(xs)-1
+        for i=1:2:length(x_)-1
             @series begin
                 x := x_[i:i+1]
                 y := y_[i:i+1,1]

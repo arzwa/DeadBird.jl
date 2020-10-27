@@ -87,8 +87,8 @@ loss rate μ, gain rate κ). This assumes a shifted geometric distribution
 on the family size at the root with mean 1/η.
 """
 @with_kw struct ConstantDLG{T} <: Params{T}
-    λ::T
-    μ::T
+    λ::T = 0.1
+    μ::T = 0.1
     κ::T = 0.
     η::T = 0.66
 end
