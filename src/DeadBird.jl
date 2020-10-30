@@ -31,14 +31,16 @@ include("utils.jl")
 
 Get some example_data.
 
-# Example
+# Example (and benchmark)
 ```julia-repl
 julia> x = DeadBird.example_data();
 
-julia> logpdf(x.model, x.dag)
+julia> @btime DeadBird.loglikelihood!(x.dag, x.model)
+  36.974 μs (431 allocations: 31.53 KiB)
 -26.30930561857625
 
-julia> logpdf(x.model, x.mat)
+julia> @btime DeadBird.loglikelihood!(x.mat, x.model)
+  32.876 μs (420 allocations: 29.91 KiB)
 -26.309305618576246
 ```
 """
