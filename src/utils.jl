@@ -45,3 +45,44 @@ function getne_orthogroups(df, tree, key=:HOG)
     out = semijoin(df, ddf, on=key)
     out[!, Symbol.([key; cols])]
 end
+
+"""
+    discretize(d, K)
+
+Discretize a distribution `d` in `K` equal probability classes.  Uses the
+median of each class as representative rate, and rescales the resulting vector
+`x` so that `mean(x) == mean(d)`. 
+
+!!! note
+    Better would be to have the mean value of each class as representative
+    I guess, but the median is much more striaghtforward to obtain given
+    that we have quantile functions available.
+
+# Example
+
+```julia-repl
+julia> discretize(Gamma(10, 0.1), 5)
+5-element Array{Float64,1}:
+ 0.6269427439826725
+ 0.8195837806573205
+ 0.9743503743962694
+ 1.1475354999847722
+ 1.4315876009789656
+```
+"""
+function discretize(d, K)
+    qstart = 1.0/2K
+    qend = 1. - 1.0/2K
+    xs = quantile.(d, qstart:(1/K):qend)
+    xs *= mean(d)*K/sum(xs)  # rescale by factor mean(d)/mean(xs)
+end
+
+qbeta(α::Real, β::Real, q::Real) = beta_inc_inv(α, β, q, 1. -q)[1]
+
+function discretize_beta(α, β, K)
+    qstart = 1.0/2K
+    qend = 1. - 1.0/2K
+    xs = [qbeta(α, β, q) for q in qstart:(1/K):qend]
+    xs *= (α/(α+β))*K/sum(xs)
+end
+
