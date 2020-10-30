@@ -8,7 +8,6 @@ using StatsBase
 using StatsFuns
 using TransformVariables
 using DataFrames
-using BandedMatrices
 using ThreadTools
 using RecipesBase
 using Printf

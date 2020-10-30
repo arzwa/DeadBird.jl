@@ -384,70 +384,46 @@ for the child nodes in the DAG are already computed and available.
         parts[n] = fill(T(-Inf), ndata[n].bound+1)
     end
     if outdegree(graph, n) == 0  # leaf case
-        parts[n][end] = zero(T) #[fill(T(-Inf), ndata[n].bound) ; zero(T)]
+        parts[n][end] = zero(T) 
         return
     end
-    dnode = ndata[n]
-    mnode = model[dnode.snode]
-    kids = outneighbors(graph, n)
-    kmax = [ndata[k].bound for k in kids]
-    kcum = cumsum([0 ; kmax])
-    keps = [getϵ(c, 1) for c in children(mnode)]
-    ϵcum = cumsum([0.; keps])
-    midx = [ndata[kid].snode for kid in kids]    
-    cm_inner!(parts[n], parts, model, midx, kids, kcum, kmax, keps, ϵcum)
+    cm_inner_dag!(dag, n, model, T)
 end
 
 @inline function cm!(profile::Profile{T}, n, model) where T
     # n is a node from the model
     @unpack x, ℓ = profile
     bound = length(ℓ[id(n)])
-    # Note, it is not true that this should be 0 when the bound is 0 and
-    # we're not at a leaf! This is the likelihood!
-    if isleaf(n) #|| x[id(n)] == 0  # leaf case
-        ℓ[id(n)][x[id(n)]+1] = zero(T)
+    if isleaf(n)
+        ℓ[id(n)][end] = zero(T)
         return
     end
-    # It would be better if we could work away all these temporary arrays
-    # we often don't need them since e.g. cumulative stuff can be updated
-    # within the inner loop...
-    kids = children(n)
-    kmax = [x[id(k)] for k in kids]
-    kcum = cumsum([0 ; kmax])
-    keps = [getϵ(c, 1) for c in kids]
-    ϵcum = cumsum([0.; keps])
-    kidid = id.(kids)
-    cm_inner!(ℓ[id(n)], ℓ, model, kidid, kidid, kcum, kmax, keps, ϵcum)
+    cm_inner_profile!(ℓ, x, n, model, T)
 end
 
-"""
-ℓi    := the likelihood vector to compute
-ℓ     := all likelihood vectors (we need those of the children)
-model := the full model struct
-midx  := indices of daughter nodes in the model struct (i.e. `model[midx[i]]` 
-         gives a daughter node) 
-lidx  := indices of daughter nodes in the likelihood vectors
-kc    := cumulative maximum number of surviving lineages for kids
-km    := maximum number of surviving lineages for the kids
-ke    := extinction probabilities for child branches
-ϵc    := cumulative extinction probabilities
-"""
-@inline function cm_inner!(
-        ℓi, ℓ, model, midx, lidx, kc, km, ke, ϵc::Vector{T}) where T
-    # not sure if correct for polytomies... I guess almost but not quite?
-    #@info "cm inner" ℓi ℓ model midx lidx kc km ke ϵc
-    # NOTE: perhaps inner part of the loop should be another function...
-    for i=1:length(midx)
-        @unpack W = model[midx[i]].data
-        B = cm_getB(T, W, ℓ[lidx[i]], kc[i], kc[i+1], km[i], ke[i])
-        i == 1 ?
-            cm_getA1!(ℓi, B, kc[2], ϵc[2], ke[1]) : 
-            cm_getAi!(ℓi, B, kc[i], kc[i+1], ϵc[i], ϵc[i+1], km[i], ke[i])    
+# Some code repitition for DAG/profile, but trying to merge lead to efficiency 
+# losses for profile...
+@inline function cm_inner_dag!(dag, n, model, ::Type{T}) where T
+    @unpack parts, ndata, graph = dag
+    kcum = 0
+    ϵcum = zero(T)
+    for (i, ki) in enumerate(outneighbors(graph, n))
+        kid   = model[ndata[ki].snode]  # child node in model
+        kmaxi = ndata[ki].bound 
+        @unpack W = kid.data
+        extpi = getϵ(kid, 1)
+        kcum′ = kcum + kmaxi
+        ϵcum′ = ϵcum + extpi
+        B = cm_getB(T, W, parts[ki], kcum, kcum′, kmaxi, extpi)
+        i == 1 ? 
+            cm_getA1!(parts[n], B, kcum′, ϵcum′, extpi) :
+            cm_getAi!(parts[n], B, kcum, kcum′, ϵcum, ϵcum′, kmaxi, extpi)
+        kcum = kcum′
+        ϵcum = ϵcum′
     end
 end
 
-# cleaner... but harder to get to work for both DAG and profile
-function cm_inner_bis!(ℓ, x, n, model, ::Type{T}) where T
+@inline function cm_inner_profile!(ℓ, x, n, model, ::Type{T}) where T
     kcum = 0
     ϵcum = zero(T)
     for (i,ki) in enumerate(children(n))
@@ -456,9 +432,9 @@ function cm_inner_bis!(ℓ, x, n, model, ::Type{T}) where T
         extpi = getϵ(ki, 1)
         kcum′ = kcum + kmaxi
         ϵcum′ = ϵcum + extpi
-        B = cm_getB(T, W, ℓ[id(ki)], kcum, kcum′, kmaxi, ϵcum)
+        B = cm_getB(T, W, ℓ[id(ki)], kcum, kcum′, kmaxi, extpi)
         i == 1 ? 
-            cm_getA1!(ℓ[id(n)], B, kcum′, ϵcum′, ϵcum) :
+            cm_getA1!(ℓ[id(n)], B, kcum′, ϵcum′, extpi) :
             cm_getAi!(ℓ[id(n)], B, kcum, kcum′, ϵcum, ϵcum′, kmaxi, extpi)
         kcum = kcum′
         ϵcum = ϵcum′
@@ -472,7 +448,7 @@ Compute log.(Ax) given log.(A) and log.(x).
 Can this be optimized to have less allocs?  Doing it in-place didn't seem to
 help much?
 """
-@inline function logmatvecmul(A::AbstractMatrix{T}, x::Vector{T}) where T
+function logmatvecmul(A::AbstractMatrix{T}, x::Vector{T}) where T
     y = similar(x)
     for i=1:length(x)
         @inbounds y[i] = logsumexp(A[i,:] .+ x)
@@ -481,7 +457,7 @@ help much?
 end
 
 # inplace version...
-@inline function _logmatvecmul!(B, A::AbstractMatrix{T}, x::Vector{T}) where T
+function _logmatvecmul!(B, A::AbstractMatrix{T}, x::Vector{T}) where T
     for i=1:length(x)
         @inbounds B[i,1] = logsumexp(A[i,:] .+ x)
     end
