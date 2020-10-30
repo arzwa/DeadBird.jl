@@ -24,6 +24,7 @@ include("linear.jl")
 include("dlsim.jl")
 include("ppsim.jl")
 include("utils.jl")
+include("yulesimon.jl")
 
 """
     example_data()
