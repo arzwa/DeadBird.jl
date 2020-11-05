@@ -313,27 +313,29 @@ function acclogpdf(dag::CountDAG, model::LPhyloBDP{T}) where T
     return ℓ
 end
 
-# Mixture model, note that every site is `mixed` independently, we cannot just
+# Mixture model, note that every site is `mixed` independently, we can't just
 # sum the full data likelihood for each component!
 function loglikelihood!(dag::CountDAG,
         model::MixtureModel{VF,VS,<:LPhyloBDP{T}}) where {VF,VS,T}
     @unpack graph, ndata = dag
     K = length(model.components)
     nodes = outneighbors(graph, nv(graph))
+    # a matrix to store for each site pattern the likelihood for each component
     matrix = zeros(T, length(nodes), K)
-    counts = [ndata[n].count for n in nodes]
-    for (i, m) in enumerate(model.components)
+    for i=1:K
+        m = model.components[i]
+        p = model.prior.p[i]
         for level in dag.levels  # parallelism possible within levels
             Threads.@threads for n in level
                 cm!(dag, n, m)
             end
         end
-        matrix[:,i] .= sitepatterns_ℓ(dag, m, nodes)
-        matrix[:,i] .-= conditionfactor(m)
+        matrix[:,i] .= sitepatterns_ℓ(dag, m, nodes) .+ log(p) 
+        matrix[:,i] .-= conditionfactor(m) 
         # NOTE: the condition factor differs for the different components,
         # and we apply it for each site pattern
     end
-    ℓs = vec(logsumexp(matrix, dims=2)) .- log(K)
+    ℓs = vec(logsumexp(matrix, dims=2))
     ℓ = sum([ndata[n].count*ℓs[i] for (i,n) in enumerate(nodes)])
     isfinite(ℓ) ? ℓ : -Inf
 end

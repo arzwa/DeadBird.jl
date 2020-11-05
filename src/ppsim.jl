@@ -199,24 +199,28 @@ end
         c = [j > size(Qs)[1] || !(Qs[j,1] - Qs[j,2] < v[j] < Qs[j,1] + Qs[j,3]) ? 
              :white : :black for j=1:length(v)]
 
-        @series begin
-            subplot := i
-            title := sp
-            titlefontfamily := :italic
-            titlefont := 8
-            titlelocation --> :left
-            seriestype := :path
-            seriescolor --> :black
-            fillalpha   --> 0.2
-            ribbon --> (y[:,2], y[:,3])
-            x, y[:,1]
+        for j=1:2:length(x)-1
+            @series begin
+                subplot := i
+                title := sp
+                titlefontfamily --> :italic
+                titlefont --> 7
+                titlelocation --> :left
+                seriestype := :path
+                seriescolor --> :black
+                fillalpha   --> 0.2
+                #ribbon --> (y[:,2], y[:,3])
+                #x, y[:,1]
+                ribbon --> (y[j:j+1,2], y[j:j+1,3])
+                x[j:j+1], y[j:j+1,1]
+            end
         end
 
         @series begin
             subplot := i
             title := sp
-            titlefontfamily := :italic
-            titlefont := 8
+            titlefontfamily --> :italic
+            titlefont --> 7
             titlelocation --> :left
             markershape --> :circle
             markersize  --> 3

@@ -77,12 +77,4 @@ function discretize(d, K)
     xs *= mean(d)*K/sum(xs)  # rescale by factor mean(d)/mean(xs)
 end
 
-qbeta(α::Real, β::Real, q::Real) = beta_inc_inv(α, β, q, 1. -q)[1]
-
-function discretize_beta(α, β, K)
-    qstart = 1.0/2K
-    qend = 1. - 1.0/2K
-    xs = [qbeta(α, β, q) for q in qstart:(1/K):qend]
-    xs *= (α/(α+β))*K/sum(xs)
-end
 
