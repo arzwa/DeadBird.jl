@@ -330,8 +330,8 @@ function loglikelihood!(dag::CountDAG,
                 cm!(dag, n, m)
             end
         end
-        matrix[:,i] .= sitepatterns_ℓ(dag, m, nodes) .+ log(p) 
-        matrix[:,i] .-= conditionfactor(m) 
+        matrix[:,i] .= sitepatterns_ℓ(dag, m, nodes) .+ 
+            log(p) .- conditionfactor(m) 
         # NOTE: the condition factor differs for the different components,
         # and we apply it for each site pattern
     end
