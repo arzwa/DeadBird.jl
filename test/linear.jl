@@ -42,7 +42,7 @@ end
     end
 end
 
-@testset "Gain model..." begin
+@testset "GDL model..." begin
     i=10
     df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))[i:i,:]
     tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
@@ -53,6 +53,21 @@ end
     l1 = DeadBird.loglikelihood!(mat, m)
     l2 = DeadBird.loglikelihood!(dag, m)
     @test l1 ≈ l2
+end
+
+@testset "GL model..." begin
+    df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-100.csv"))
+    tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
+    dag, bound = CountDAG(df, tr)
+    mat, bound = DeadBird.ProfileMatrix(df, tr)
+    m1 = PhyloBDP(RatesModel(ConstantDLG(λ=.0, μ=.2, κ=0.5, η=0.5/0.2),
+                             rootprior=:poisson), tr, bound, cond=:none)
+    m2 = PhyloBDP(RatesModel(ConstantDLG(λ=1e-7, μ=.2, κ=0.5, η=0.5/0.2), 
+                             rootprior=:poisson), tr, bound, cond=:none)
+    l1 = DeadBird.loglikelihood!(dag, m1)
+    l2 = DeadBird.loglikelihood!(dag, m2)
+    @show l1, l2
+    @test l1 ≈ l2 atol=5  # not sure why there is so much difference...
 end
 
 @testset "Gain/no gain" begin

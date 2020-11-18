@@ -22,7 +22,7 @@ function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=true)
         q1 = quantile(x.sims[s][n,:], 0.025)
         q2 = quantile(x.sims[s][n,:], 0.975)
         xn = x.data[s][n]
-        push!(rows, (species=_process_taxon(s), 
+        push!(rows, (species=_process_taxon(s, abbr), 
                      quantity="f_$(kmin + n - 1)", 
                      observed=xn, 
                      interval=(q1,q2), 
@@ -31,7 +31,7 @@ function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=true)
     DataFrame(rows)
 end
 
-function _process_taxon(x; abbr=true) 
+function _process_taxon(x, abbr=true) 
     xs = split(string(x), "_")
     genus = xs[1][1] * "."
     abbr ? "$genus $(join(xs[2:end], " "))" : join(xs, " ")
@@ -180,6 +180,8 @@ end
 
 @recipe function f(pps::PPSim)
     @unpack data, sims = pps
+    scat = haskey(plotattributes, :scat) ? plotattributes[:scat] : true
+    taxa = haskey(plotattributes, :taxa) ? plotattributes[:taxa] : nothing
     xguide --> "\$n\$"
     yguide --> "\$\\log_{10}p\$"
     guidefont --> 8
@@ -191,7 +193,9 @@ end
     ylims --> (log10(ϵ), 0)
     
     for (i, (k,v)) in enumerate(data)
-        sp = join(split(string(k), "_"), " ")
+        sp = isnothing(taxa) ? 
+            join(split(string(k), "_"), " ") : 
+            taxa[k]
         Qs = quantiles(sims[k])
         x, y = getsteps([1:size(Qs)[1] Qs])
         v[v .== 0.] .= ϵ 
@@ -216,18 +220,20 @@ end
             end
         end
 
-        @series begin
-            subplot := i
-            title := sp
-            titlefontfamily --> :italic
-            titlefont --> 7
-            titlelocation --> :left
-            markershape --> :circle
-            markersize  --> 3
-            seriestype := :scatter
-            seriescolor --> c
-            x = collect(1:length(v)) .+ 0.5
-            x, v
+        if scat
+            @series begin
+                subplot := i
+                title := sp
+                titlefontfamily --> :italic
+                titlefont --> 7
+                titlelocation --> :left
+                markershape --> :circle
+                markersize  --> 3
+                seriestype := :scatter
+                seriescolor --> c
+                x = collect(1:length(v)) .+ 0.5
+                x, v
+            end
         end
     end
 end

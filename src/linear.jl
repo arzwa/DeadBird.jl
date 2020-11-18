@@ -59,6 +59,8 @@ function extp(t, λ, μ, ϵ)
     if isapprox(λ, μ, atol=ΛMTOL)
         e = one(ϵ) - ϵ
         return one(ϵ) - e/(μ*t*e + one(ϵ))
+    elseif isapprox(λ, zero(λ), atol=1e-9)  # gain loss model
+        return (1.0 - exp(-μ*t)) + ϵ * exp(-μ*t)
     else
         r = exp(t*(λ-μ))
         a = λ*r*(ϵ - one(ϵ))
@@ -153,10 +155,14 @@ function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '0
     b = 1. - ψ′
     c = log(a) + log(b)  # (1-p')*(1-q') in Csuros
     d = log(ψ′)  # q' in Csuros
-    (κ/λ > zero(κ)) && (b > zero(b)) ? # gain model
-        # if κ = λ this is a geometric pmf...
-        w[1,:] = logpdf.(NegativeBinomial(κ/λ, b), 0:l) :
+    # if κ/λ is in a reasonable range, we have a Negative binomial 0->n pmf
+    if (zero(κ) < κ/λ < 1e10) && (b > zero(b))
+        w[1,:] = logpdf.(NegativeBinomial(κ/λ, b), 0:l)
+    elseif κ/λ >= 1e10  # Gain + loss model (ignore duplication if λ ≈ 0) 
+        w[1,:] = logpdf.(Poisson((κ/μ) * ϕ′), 0:l)  # note that ψ = 0 and ϕ = (1-e^(-μt))
+    else
         w[1,1] = zero(T)
+    end
     for m=1:l, n=1:m
         w[n+1, m+1] = logaddexp(d + w[n+1, m], c + w[n, m])
     end
@@ -202,6 +208,8 @@ function ∫root(p, rates, ϵ)
         ℓ = ∫rootshiftgeometric(p, η, ϵ)
     elseif rates.rootprior == :geometric
         ℓ = ∫rootgeometric(p, η, ϵ)
+    elseif rates.rootprior == :poisson
+        ℓ = ∫rootpoisson(p, η, ϵ)
     else
         throw("$(rates.rootprior) not implemented!")
     end
@@ -210,6 +218,9 @@ end
 # We could work with types as well and use dispatch...
 function conditionfactor(model)
     return if model.cond == :root
+        @assert model.rates.rootprior == :shifted "conditional "*
+            "likelihood `$(model.cond)` only implemented for "*
+            "shifted geometric prior on the root..."
         nonextinctfromrootcondition(model)
     #elseif model.cond == :nowhere
     #    extinctnowherecondition(model)
@@ -263,10 +274,28 @@ state
     return p
 end
 
+"""
+    ∫rootpoisson(ℓ, η, ϵ)
+
+Relevant mainly for the gain+loss model. We assume `η` is the mean of the Poisson
+distribution (for the stationary distribution of the GL model this is `ν/μ`), and
+`ϵ` is the extinction probability for a single lineage at the root.
+"""
+@inline function ∫rootpoisson(ℓ, η, lϵ)
+    p = -Inf
+    d = Poisson(η*(1. - exp(lϵ))) 
+    for i in 1:length(ℓ)
+        p = logaddexp(p, ℓ[i] + logpdf(d, i-1))
+    end
+    return p
+end
+
 # This is the non-extinction in both clades stemming from the root condition
 # XXX: assumes the shifted geometric prior!
 # XXX: only for linear model, since it works from the extinction probability
 # for a single lineage and assumes the branching property
+# TODO: rewrite the whole prior on root/conditioning implementation to be work
+# for more easily for all relevant priors...
 function nonextinctfromrootcondition(model::LPhyloBDP)
     @unpack η = getθ(model.rates, root(model))
     lη = log(η)
