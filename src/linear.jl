@@ -283,7 +283,9 @@ distribution (for the stationary distribution of the GL model this is `ν/μ`), 
 """
 @inline function ∫rootpoisson(ℓ, η, lϵ)
     p = -Inf
-    d = Poisson(η*(1. - exp(lϵ))) 
+    r = η*(1. - exp(lϵ))
+    r < zero(r) && return p
+    d = Poisson(r) 
     for i in 1:length(ℓ)
         p = logaddexp(p, ℓ[i] + logpdf(d, i-1))
     end
