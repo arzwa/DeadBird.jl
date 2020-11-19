@@ -74,7 +74,13 @@ function discretize(d, K)
     qstart = 1.0/2K
     qend = 1. - 1.0/2K
     xs = quantile.(d, qstart:(1/K):qend)
-    xs *= mean(d)*K/sum(xs)  # rescale by factor mean(d)/mean(xs)
+    xs .* (mean(d)*K/sum(xs))  # rescale by factor mean(d)/mean(xs)
 end
 
-
+function discretize(d::Beta, K)
+    qstart = 1.0/2K
+    qend = 1. - 1.0/2K
+    #xs = [IncBetaDer.beta_inc_inv_(d.α, d.β, q) for q in qstart:(1/K):qend]
+    xs = quantile.(d, qstart:(1/K):qend)
+    xs .* (mean(d)*K/sum(xs))
+end

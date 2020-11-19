@@ -12,6 +12,7 @@ using ThreadTools
 using RecipesBase
 using Printf
 using Random
+using IncBetaDer
 import StatsBase: loglikelihood
 
 #include("mexp.jl")
@@ -25,7 +26,6 @@ include("dlsim.jl")
 include("ppsim.jl")
 include("utils.jl")
 include("yulesimon.jl")
-include("discretebeta.jl")
 
 """
     example_data()

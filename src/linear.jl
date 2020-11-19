@@ -10,8 +10,10 @@
 # each family separately, it is not useful to compute values up to the 
 # upper bound of the entire matrix for a node in the speices tree...
 
-const ΛMTOL = 1e-6
+# Not sure how to choose this constant, important for cancellation errors though
+const ΛMTOL = 1e-6  
 const LMTOL = log(ΛMTOL)
+
 approx1(x) = x ≈ one(x) ? one(x) : x
 approx0(x) = x ≈ zero(x) ? zero(x) : x
 probify(x) = max(min(x, one(x)), zero(x))
@@ -20,22 +22,24 @@ probify(x) = max(min(x, one(x)), zero(x))
     getϕψ(t, λ, μ)
 
 [Not exported] Returns `ϕ = μ(eʳ - 1)/(λeʳ - μ)` where `r = t*(λ-μ)` and `ψ =
-ϕ*λ/μ`, with special cases for λ ≈ μ. These methods should be implremented as
+ϕ*λ/μ`, with special cases for λ ≈ μ. These methods should be implemented as
 to prevent underflow/overflow issues.  Note these quantities are also called p
 and q (in Csuros & Miklos) or α and β (in Bailey). Note that ϕ = P(Xₜ=0|X₀=1),
-i.e. the extinction probability for a single particle.
+i.e. the extinction probability for a single gene.
 """
 function getϕψ(t, λ, μ)
-    if isapprox(λ, μ, atol=ΛMTOL)
+    if λ == zero(λ)  # gain+loss 
+        ϕ = probify(1. - exp(-μ*t))
+        return ϕ, zero(λ)
+    elseif isapprox(λ, μ, atol=ΛMTOL)  # (approximately) critical case
         ϕ = probify(λ*t/(one(λ) + λ*t))
         return ϕ, ϕ
     else
         r = exp(t*(λ-μ))
-        # for large values in the exponent, we get Inf, but
-        # actually the true value is μ/λ. If we get -Inf, the 
-        # true value should be 1.
-        r ==  Inf && return μ/λ, one(μ)
-        r == -Inf && return one(μ), λ/μ
+        # if r ~ Inf, then the extinction probability should be 0, and ψ as well
+        r == Inf && return zero(r), zero(r)
+        # if r ~ 0 (exponent -> -Inf), we get almost sure extinction
+        r ≈ zero(r) && return one(μ), λ/μ
         a = μ*(r-one(r))
         b = λ*r-μ
         ϕ = a/b
@@ -59,7 +63,7 @@ function extp(t, λ, μ, ϵ)
     if isapprox(λ, μ, atol=ΛMTOL)
         e = one(ϵ) - ϵ
         return one(ϵ) - e/(μ*t*e + one(ϵ))
-    elseif isapprox(λ, zero(λ), atol=1e-9)  # gain loss model
+    elseif λ ≈ zero(λ)  # gain+loss model
         return (1.0 - exp(-μ*t)) + ϵ * exp(-μ*t)
     else
         r = exp(t*(λ-μ))
@@ -149,18 +153,25 @@ transition matrix is *not* a stochastic matrix of some Markov chain.
 function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ
     l = size(w)[1]-1
-    ϕ, ψ = getϕψ(t, λ, μ)  # p, q
-    ϕ′, ψ′ = getϕψ′(ϕ, ψ, exp(ϵ))
+    ϕ , ψ  = getϕψ(t, λ, μ)        # p , q  in Csuros
+    ϕ′, ψ′ = getϕψ′(ϕ, ψ, exp(ϵ))  # p', q' in Csuros
     a = 1. - ϕ′
     b = 1. - ψ′
-    c = log(a) + log(b)  # (1-p')*(1-q') in Csuros
-    d = log(ψ′)  # q' in Csuros
-    # if κ/λ is in a reasonable range, we have a Negative binomial 0->n pmf
-    if (zero(κ) < κ/λ < 1e10) && (b > zero(b))
-        w[1,:] = logpdf.(NegativeBinomial(κ/λ, b), 0:l)
-    elseif κ/λ >= 1e10  # Gain + loss model (ignore duplication if λ ≈ 0) 
-        w[1,:] = logpdf.(Poisson((κ/μ) * ϕ′), 0:l)  # note that ψ = 0 and ϕ = (1-e^(-μt))
+    c = log(a) + log(b) 
+    d = log(ψ′)
+    r = κ/λ
+    if (zero(r) < r < 1e10) && (b > zero(b))
+        # gain+duplication+loss, NegativeBinomial contribution from gain
+        # if λ = κ this is a geometric distribution
+        # if λ is so small as to dwarfed by κ this is a Poisson distribution
+        # we use the gain-loss model in the latter case
+        w[1,:] = logpdf.(NegativeBinomial(r, b), 0:l)
+    elseif r >= 1e10  
+        # gain+loss (ignore duplication if λ ≈ 0), Poisson contribution from gain
+        r′ = κ * ϕ * (1. - exp(ϵ)) / μ  # recall ϕ = (1-e^(-μt))
+        w[1,:] = logpdf.(Poisson(r′), 0:l)     
     else
+        # no gain (κ = 0.)
         w[1,1] = zero(T)
     end
     for m=1:l, n=1:m

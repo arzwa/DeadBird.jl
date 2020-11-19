@@ -1,17 +1,4 @@
-# XXX: how does the prior on the root work for models that include gain???
-# Normally, the prior probability mass for our geometric prior is 0 for Xₒ = 0!
-# TODO: This! we should at least allow for shifted geometric (currently only
-# available one), geometric, and Poisson distributions on the root state I
-# guess?
-# Since they are all single parameter, we can just implement them at the 
-# RatesModel level I guess, with the η parameter having different meanings
-# for the different models. Not as general as I'd like it though, but whatever
-# (for now).
-# But the transformation would be different for Poisson, so it should already
-# require a more general approach, let's keep that for later and now just work
-# with an if-else condition, not using dispatch on some rootprior distribution
-# type
-
+# defined here, but implemented elsewhere
 function iswgd end
 function wgdid end
 function nonwgdchild end

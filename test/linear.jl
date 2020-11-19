@@ -66,8 +66,7 @@ end
                              rootprior=:poisson), tr, bound, cond=:none)
     l1 = DeadBird.loglikelihood!(dag, m1)
     l2 = DeadBird.loglikelihood!(dag, m2)
-    @show l1, l2
-    @test l1 ≈ l2 atol=5  # not sure why there is so much difference...
+    @test l1 ≈ l2 atol=1e-5
 end
 
 @testset "Gain/no gain" begin
