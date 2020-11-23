@@ -7,8 +7,6 @@ Random.seed!(624)
 
 const TURING = false
 
-@test isempty(Test.detect_ambiguities(Base, Core, YourPackage))
-
 @testset "DeadBird tests" begin
     include("linear.jl")
 end
