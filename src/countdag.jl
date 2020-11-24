@@ -34,8 +34,9 @@ Base.length(dag::CountDAG) = dag.nfam
 
 # The copy function is important for AD applications.
 # It's quite cheap when using `similar`.
-copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata,
-    similar(g.parts, Vector{T}), g.nfam)
+function copydag(g, ::Type{T}) where T
+    CountDAG(g.graph, g.levels, g.ndata, similar(g.parts, Vector{T}), g.nfam)
+end
 
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
 CountDAG(df, tree) = CountDAG(Matrix(df), names(df), tree)
@@ -115,11 +116,14 @@ function add_root!(dag, ndata, x, n)
     for j in unique(x) add_edge!(dag, i, j) end
 end
 
-Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T =
+function Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T
     loglikelihood!(copydag(x, T), m)
+end
 
-Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
-    x::CountDAG) where {VF,VS,T} = loglikelihood!(copydag(x, T), m)
+function Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}}, 
+                              x::CountDAG) where {VF,VS,T} 
+    loglikelihood!(copydag(x, T), m)
+end
 
 # ## Notes
 # We need a data structure that summarizes the entire data set. Or find any

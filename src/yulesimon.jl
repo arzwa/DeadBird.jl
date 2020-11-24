@@ -1,3 +1,4 @@
+# Take this somewhere else...
 module YuleSimonDistribution
 using Distributions, SpecialFunctions 
 

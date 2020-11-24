@@ -34,13 +34,16 @@ struct RatesModel{T,M<:Params{T},V}
     rootprior::Symbol
 end
 
-RatesModel(θ; fixed=(), rootprior=:shifted) = 
+function RatesModel(θ; fixed=(), rootprior=:shifted)
     RatesModel(θ, fixed, gettrans(θ, fixed), rootprior)
+end
 
 Base.eltype(m::RatesModel{T}) where T = T
-Base.show(io::IO, m::RatesModel) = write(io,
-    "RatesModel with $(m.fixed) fixed and "*
-    "$(m.rootprior) prior on root\n$(m.params)")
+
+function Base.show(io::IO, m::RatesModel) 
+    write(io, "RatesModel with $(m.fixed) fixed and ")
+    write(io, "$(m.rootprior) prior on root\n$(m.params)")
+end
 
 getθ(m::RatesModel, node) = getθ(m.params, node)
 getp(m::P, n) where {T,P<:Params{T}} = hasfield(P, :p) &&
@@ -97,12 +100,17 @@ end
     η::T = 0.66
 end
 
-getθ(m::ConstantDLGWGD, node) = iswgd(node) ?
-    (λ=m.λ, μ=m.μ, q=m.q[wgdid(node)], κ=m.κ) : (λ=m.λ, μ=m.μ, κ=m.κ, η=m.η)
+function getθ(m::ConstantDLGWGD, node) 
+    return iswgd(node) ?
+        (λ=m.λ, μ=m.μ, q=m.q[wgdid(node)], κ=m.κ) : 
+        (λ=m.λ, μ=m.μ, κ=m.κ, η=m.η)
+end
+
 trans(m::ConstantDLGWGD) = (
     λ=asℝ₊, μ=asℝ₊,
     q=as(Array, as𝕀, length(m.q)),
     κ=asℝ₊, η=as𝕀)
+
 function (::ConstantDLGWGD)(θ)
     T = eltype(θ.q)
     ConstantDLGWGD(;λ=T(θ.λ), μ=T(θ.μ), q=θ.q, κ=T(θ.κ), η=T(θ.η))
@@ -159,50 +167,10 @@ trans(m::DLGWGD) = (
     q=as(Array, as𝕀, length(m.q)),
     κ=asℝ₊, η=as𝕀)
 
-(::DLGWGD)(θ) = DLGWGD(;
-    λ=θ.λ, μ=θ.μ, q=θ.q, κ=eltype(θ.λ)(θ.κ), η=eltype(θ.λ)(θ.η))
+function (::DLGWGD)(θ)
+    DLGWGD(; λ=θ.λ, μ=θ.μ, q=θ.q, κ=eltype(θ.λ)(θ.κ), η=eltype(θ.λ)(θ.η))
+end
 
-const LinearModel = RatesModel{T,V} where
+const LinearModel = RatesModel{T,V} where 
     {T,V<:Union{ConstantDLG,DLG,DLGWGD,ConstantDLGWGD}}
 
-
-# Non-linear models
-"""
-    ConstantDLSC{T}
-
-Constant rates duplication-loss model with different loss rates
-when in single copy state.
-"""
-struct ConstantDLSC{T} <: Params{T}
-    λ ::T
-    μ ::T
-    μ₁::T
-    η ::T
-    m ::Int   # truncation bound
-    Q ::Matrix{T}
-
-    function ConstantDLSC(λ::T, μ::T, μ₁::T, η::T, m::Int) where T
-        p = new{T}(λ, μ, μ₁, η, m, Matrix{T}(undef, m+1, m+1))
-        setratematrix!(p)
-        return p
-    end
-end
-
-ConstantDLSC(; λ=0.1, μ=0.1, μ₁=0.01, η=0.66, m=10) =
-    ConstantDLSC(promote(λ, μ, μ₁, η)..., m)
-
-Base.show(io::IO, m::ConstantDLSC) = write(io, "ConstantDLSC(\n λ  = $(m.λ),",
-    "\n μ  = $(m.μ),\n μ₁ = $(m.μ₁),\n η  = $(m.η),\n m  = $(m.m))")
-
-getθ(m::ConstantDLSC, node) = m
-getQ(m::ConstantDLSC, node) = m.Q
-trans(::ConstantDLSC) = (λ=asℝ₊, μ=asℝ₊, μ₁=asℝ₊, η=as𝕀)
-(::ConstantDLSC)(θ) = ConstantDLSC(; λ=θ.λ, μ=θ.μ, μ₁=θ.μ₁, η=θ.η, m=θ.m)
-
-function setratematrix!(p::ConstantDLSC)
-    @unpack λ, μ, μ₁, η, m = p
-    μs = [μ₁ ; μ .* collect(2:m)]
-    λs = λ .* collect(0:(m-1))
-    ds = vcat(0., -λs[2:end] .- μs[1:end-1], -μs[end])
-    p.Q .= Matrix(BandedMatrix(-1=>μs, 1=>λs, 0=>ds))
-end

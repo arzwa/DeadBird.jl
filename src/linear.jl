@@ -75,9 +75,6 @@ function extp(t, λ, μ, ϵ)
     end
 end
 
-getϵ(n, i::Int) = n.data.ϵ[i]
-setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
-
 """
     getϕψ′(ϕ, ψ, ϵ)
 

@@ -1,6 +1,4 @@
 # # Benchmarks
-# To be used with Literate, to generate a markdown report.
-# Note, apparently, Literate cannot handle begin/end blocks?
 using BenchmarkTools, DeadBird, CSV, DataFrames, Distributions, NewickTree
 import DeadBird: loglikelihood!, cm!
 

@@ -1,31 +1,42 @@
 # Arthur Zwaenepoel (2020)
+# Consider the following design for arbitrary multiplication nodes:
+# instead of relying on a string/symbol/type to identify WGDs, we just
+# associate with each node a multiplication level `k`, if `k == 1` we have a
+# speciation node (bi/multi-furcating)  or `wgdafter` node (non- bifurcating
+# case). For `k > 1` we have a multiplication node...
+
 # hate the name, but'it's barely used (the name that is)
-# ϵ and W should be abstract, because now we can't use Tracker...
-# But to be able to use ReverseDiff, we have to change a lot more
-# (array assignments for instance...)
 struct NodeProbs{T}
-    name::String  # leaf name/wgd/wgt ...
+    name::String  # leaf name
+    k::Int        # multiplication level
     t::Float64    # usually distances have a fixed type
     ϵ::Vector{T}
     W::Matrix{T}
 end
 
-const ModelNode{T,I} = Node{I,NodeProbs{T}}
-
-function NodeProbs(n, m::Int, T::Type) 
+function NodeProbs(n, m::Int, k::Int, ::Type{T}) where T
     ϵ = fill(T(-Inf), 2)
     W = fill(T(-Inf), m, m)
-    NodeProbs(name(n), distance(n), ϵ, W)
+    NodeProbs(name(n), k, distance(n), ϵ, W)
 end
 
-Base.show(io::IO, n::NodeProbs{T}) where T = write(io, n.name)
+Base.show(io::IO, n::NodeProbs) = write(io, "$(name(n)), k=$(n.k)")
 NewickTree.name(n::NodeProbs) = n.name
 NewickTree.distance(n::NodeProbs) = n.t
-iswgd(n) = startswith(name(n), "wgd")
-iswgt(n) = startswith(name(n), "wgt")
-wgdid(n) = iswgd(n) ? parse(Int64, split(name(n))[2]) : NaN
-iswgdafter(n) = name(n) == "wgdafter"
-iswgtafter(n) = name(n) == "wgtafter"
+
+# this is used more often
+const ModelNode{T,I} = Node{I,NodeProbs{T}}
+
+# extinction probabilities
+getϵ(n, i::Int) = n.data.ϵ[i]
+setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
+
+# multiplication levels
+getk(n) = n.data.k
+iswgd(n) = getk(n) == 2
+iswgt(n) = getk(n) == 3
+iswgdafter(n) = iswgd(parent(n))
+iswgtafter(n) = iswgt(parent(n))
 
 """
     PhyloBDP(ratesmodel, tree, bound)
@@ -68,27 +79,15 @@ mutable struct PhyloBDP{T,M,I} <: DiscreteMultivariateDistribution
     cond ::Symbol
 end
 
-struct ModelArray{M} <: DiscreteMultivariateDistribution
-    models::Vector{M}
-end
+const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
 
-Base.getindex(m::ModelArray, i) = m.models[i]
-Base.length(m::ModelArray) = length(m.models)
-
-# often useful, but not very general, does not play nice with RatesModel
-# interface, e.g. fixed/non-fixed etc...
-ModelArray(m, X, λ) = 
-    ModelArray([m((λ=λ[i], μ=λ[i]), X[i].x[1]) for i=1:length(λ)])
-ModelArray(m, X, λ, η::Real) = 
-    ModelArray([m((λ=λ[i], μ=λ[i], η=η), X[i].x[1]) for i=1:length(λ)])
-
-function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;
-        cond::Symbol=:root) where {T,I}
+function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int; 
+                  cond::Symbol=:root) where {T,I}
     order = ModelNode{T,I}[]
     function walk(x, y)
         y′ = isroot(x) ?
-            Node(id(x), NodeProbs(x, m+1, T)) :
-            Node(id(x), NodeProbs(x, m+1, T), y)
+            Node(id(x), NodeProbs(x, m+1, 1, T)) :
+            Node(id(x), NodeProbs(x, m+1, 1, T), y)
         for c in children(x) walk(c, y′) end
         push!(order, y′)
         return y′
@@ -98,6 +97,22 @@ function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int;
     setmodel!(model)  # assume the model should be initialized
     return model
 end
+
+function Base.show(io::IO, m::PhyloBDP) 
+    write(io, "PhyloBDP(\n"*"condition: $(m.cond)\n")
+    write(io, "bound: $(m.bound) \n$(m.rates))")
+end
+
+Base.getindex(m::PhyloBDP, i) = m.nodes[i]
+root(m::PhyloBDP) = m.order[end]
+NewickTree.getroot(m::PhyloBDP) = root(m)
+
+struct ModelArray{M} <: DiscreteMultivariateDistribution
+    models::Vector{M}
+end
+
+Base.getindex(m::ModelArray, i) = m.models[i]
+Base.length(m::ModelArray) = length(m.models)
 
 # These are two 'secondary constructors',
 # i.e. they establish a model based on an already available model structure
@@ -111,14 +126,6 @@ function update!(m::PhyloBDP, θ)
     setmodel!(m)
 end
 
-Base.getindex(m::PhyloBDP, i) = m.nodes[i]
-Base.show(io::IO, m::PhyloBDP) = write(io, "PhyloBDP(\n  "*
-    "condition: $(m.cond)\n  bound: $(m.bound) \n$(m.rates))")
-root(m::PhyloBDP) = m.order[end]
-NewickTree.getroot(m::PhyloBDP) = root(m)
-
-const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
-
 function setmodel!(model::LPhyloBDP)
     @unpack order, rates = model
     for n in order
@@ -127,7 +134,11 @@ function setmodel!(model::LPhyloBDP)
     end
 end
 
+# loglikelihood -> logpdf
 Distributions.loglikelihood(m::PhyloBDP, x) = logpdf(m, x)
 Distributions.loglikelihood(M::ModelArray, x) = logpdf(M, x)
-Distributions.loglikelihood(m::MixtureModel{Multivariate,Discrete,P}, 
-                            x) where P<:PhyloBDP = logpdf(m, x)
+function Distributions.loglikelihood(
+        m::MixtureModel{Multivariate,Discrete,P}, x) where P<:PhyloBDP 
+    return logpdf(m, x)
+end
+

@@ -12,7 +12,7 @@ using ThreadTools
 using RecipesBase
 using Printf
 using Random
-using IncBetaDer
+#using IncBetaDer
 import StatsBase: loglikelihood
 
 include("rmodels.jl")
@@ -23,7 +23,6 @@ include("linear.jl")
 include("dlsim.jl")
 include("ppsim.jl")
 include("utils.jl")
-include("yulesimon.jl")
 
 """
     example_data()
