@@ -8,7 +8,7 @@
 # generating DataFrames whereas multivariate samplers in Distributions generate
 # vectors and matrices. Also it's a bit tricky to use that API to get the
 # expected outputs for ModelArray, PhyloBDP and MixtureModel structs. I decided
-# to not extend the `rand` methods, but have a `simulate` function...
+# to not extend the `rand` methods, but have a `simulate` function.
 
 # should not be exposed (a bit like the Sampler type in Random)
 struct ProfileSim{T}

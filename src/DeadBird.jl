@@ -15,13 +15,11 @@ using Random
 using IncBetaDer
 import StatsBase: loglikelihood
 
-#include("mexp.jl")
 include("rmodels.jl")
 include("model.jl")
 include("countdag.jl")
 include("profile.jl")
 include("linear.jl")
-#include("nonlinear.jl")
 include("dlsim.jl")
 include("ppsim.jl")
 include("utils.jl")
@@ -56,7 +54,7 @@ function example_data()
 end
 
 export CountDAG, ProfileMatrix, Profile
-export ConstantDLG, DLG, RatesModel, PhyloBDP, ConstantDLSC, ModelArray
+export ConstantDLG, DLG, RatesModel, PhyloBDP, ModelArray
 export simulate
 
 end # module

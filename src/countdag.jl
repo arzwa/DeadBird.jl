@@ -21,7 +21,7 @@ julia> dag = CountDAG(x.df, x.tr)
 (dag = CountDAG({17, 20} directed simple Int64 graph), bound = 7)
 ```
 """
-struct CountDAG{T,G,I}  # I'd prefer this to have one type parameter fewer
+struct CountDAG{T,G,I}  # too many types?
     graph ::SimpleDiGraph{G}  # the DAG, with vertices ordered in a post-order
     levels::Vector{Vector{G}}
     ndata ::Vector{NodeData{I}}
@@ -32,36 +32,21 @@ end
 Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
 Base.length(dag::CountDAG) = dag.nfam
 
-# An alternative implementation would be to directly implement a DAGNode type
-# with parents, children, the partial likelihood vector etc.
-
 # The copy function is important for AD applications.
 # It's quite cheap when using `similar`.
 copydag(g, T) = CountDAG(g.graph, g.levels, g.ndata,
     similar(g.parts, Vector{T}), g.nfam)
 
-# HACK, a proper constructor would be nicer...
-function nonlineardag(g::CountDAG, bound)
-    newparts = map(g.parts) do x
-        if x[end] == 0.
-            y = fill(-Inf, bound+1)
-            y[length(x)] = 0.
-        else
-            y = fill(NaN, bound+1)
-        end
-        y
-    end
-    CountDAG(g.graph, g.levels, g.ndata, newparts, g.nfam)
-end
-
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
 CountDAG(df, tree) = CountDAG(Matrix(df), names(df), tree)
+
 function CountDAG(matrix::Matrix, names, tree)
     colindex = Dict(string(s)=>i for (i,s) in enumerate(names))
     dag = SimpleDiGraph()
     ndata = NodeData{typeof(id(tree))}[]
     parts = Vector{Float64}[]
     levels = Dict{Int,Vector{Int}}()
+    
     function walk(n, l)
         if isleaf(n)
             x = matrix[:,colindex[name(n)]]
@@ -74,6 +59,7 @@ function CountDAG(matrix::Matrix, names, tree)
         haskey(levels, l) ? union!(levels[l], unique(y)) : levels[l] = unique(y)
         return y
     end
+    
     walk(tree, 1)
     bound = maximum([n.bound for n in ndata])
     levels = collect(values(sort(levels, rev=true)))
@@ -84,9 +70,9 @@ end
 """
     add_leaves!(dag, ndata, parts, x, n)
 
-[Not exported] For a species tree leaf node `n`, this adds the vector of (gene)
-counts `x` for that species to the graph.  This returns for each gene family
-the corresponding node that was added to the graph
+For a species tree leaf node `n`, this adds the vector of (gene) counts `x` for
+that species to the graph.  This returns for each gene family the corresponding
+node that was added to the graph
 """
 function add_leaves!(dag, ndata, parts, x, n)
     idmap = Dict()
@@ -102,13 +88,13 @@ end
 """
     add_internal!(dag, ndata, parts, x, n)
 
-[Not exported] For a species tree internal node `n`, this adds the gene family
-nodes associated with `n` to the graph and provides the bound on the number of
+For a species tree internal node `n`, this adds the gene family nodes
+associated with `n` to the graph and provides the bound on the number of
 lineages that survive to the present below `n` for each gene family.  Note that
 `x` is a vector of tuples of DAG nodes that each will be joined into a newly
 added node.  The resulting nodes are returned.
 
-NOTE: I believe this also works for multifurcating species trees (like the
+!!! note: I believe this also works for multifurcating species trees (like the
 Csuros Miklos algorithm does too)
 """
 function add_internal!(dag, ndata, parts, x, n)
@@ -135,7 +121,6 @@ Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T =
 Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
     x::CountDAG) where {VF,VS,T} = loglikelihood!(copydag(x, T), m)
 
-
 # ## Notes
 # We need a data structure that summarizes the entire data set. Or find any
 # other way to arrange the computations more economically. Any unique subtree
@@ -154,22 +139,9 @@ Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
 # of the problem as a DAG has been pointed out before. Also I'm unsure whether
 # this is implemented in any high-performance phylogenetics library.
 
-# It would be worth examining in more detail how the approach here compares to
-# CAFE (and perhaps Count)? Note that CAFE uses Nelder-Mead apparently, while
-# Count uses L-BFGS (but not sure how they compute gradients). A comparison
-# with CAFE for ML estimation both in terms of speed and accuracy would be
-# interesting (a bit a shame Csuros & Miklos didn't compare accuracy of the
-# conditional survival approach with a pruning algorithm approach?).
-
-# NOTE: the DAG approach will be more tricky to implement the rjMCMC algrithm
+# NOTE: the DAG approach will be more tricky to implement the rjMCMC algorithm
 # from Beluga for... We would have to localize *all* nodes in the graph where a
 # new parent got inserted and update the order...
-
-# NOTE: distributed computing combined with AD will be more challenging I
-# guess, since it is not directly obvious what to parallelise... I guess
-# computations at each 'level' of the species tree could in principle be
-# parallelized, but to get AD to work with that seems challenging to say the
-# least. However, maybe AD does work out of the box with threads?
 
 # NOTE: mixtures that are not marginalized are another tricky thing for this
 # approach. In general we lose flexibility whenever the model is no longer iid
@@ -179,3 +151,6 @@ Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}},
 # corresponding to parts of the data efficiently, this approach might still
 # enable speed-ups compared to computing partial likelihoods independently for
 # each family.
+#
+# At any rate the conclusion seems to be that while the DAG approach is useful
+# we also need an implementation that does not scramble different families.

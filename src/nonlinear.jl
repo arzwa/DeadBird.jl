@@ -8,7 +8,22 @@
 # can be used directly for these purposes, we have the W field in the
 # `ModelNode` object to store the transition probability matrices.  So we could
 # just dispatch on the `RatesModel` to know whether we need the truncated state
-# space models or whether we can use the CM algorithm.  non-linear models
+# space models or whether we can use the CM algorithm. 
+
+# HACK, a proper constructor would be nicer...
+function nonlineardag(g::CountDAG, bound)
+    newparts = map(g.parts) do x
+        if x[end] == 0.
+            y = fill(-Inf, bound+1)
+            y[length(x)] = 0.
+        else
+            y = fill(NaN, bound+1)
+        end
+        y
+    end
+    CountDAG(g.graph, g.levels, g.ndata, newparts, g.nfam)
+end
+
 function setmodel!(model::PhyloBDP)
     @unpack order, rates = model
     for n in order
