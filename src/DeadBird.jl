@@ -12,7 +12,6 @@ using ThreadTools
 using RecipesBase
 using Printf
 using Random
-#using IncBetaDer
 import StatsBase: loglikelihood
 
 include("rmodels.jl")
