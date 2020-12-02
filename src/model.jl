@@ -10,33 +10,49 @@ struct NodeProbs{T}
     name::String  # leaf name
     k::Int        # multiplication level
     t::Float64    # usually distances have a fixed type
-    ϵ::Vector{T}
-    W::Matrix{T}
+    ϵ::Vector{T}  # extinction probabilities
+    W::Matrix{T}  # transition probability matrices (conditional process!)
 end
 
-function NodeProbs(n, m::Int, k::Int, ::Type{T}) where T
+function NodeProbs(n, m::Int, ::Type{T}) where T
+    NodeProbs(name(n), getk(n), distance(n), m, T)
+end
+
+function NodeProbs(name, k, t, m::Int, ::Type{T}) where T
     ϵ = fill(T(-Inf), 2)
     W = fill(T(-Inf), m, m)
-    NodeProbs(name(n), k, distance(n), ϵ, W)
+    NodeProbs(name, k, t, ϵ, W)
 end
 
 Base.show(io::IO, n::NodeProbs) = write(io, "$(name(n)), k=$(n.k)")
+
 NewickTree.name(n::NodeProbs) = n.name
 NewickTree.distance(n::NodeProbs) = n.t
 
 # this is used more often
 const ModelNode{T,I} = Node{I,NodeProbs{T}}
+getbound(m::ModelNode) = size(m.data.W, 1)
 
 # extinction probabilities
 getϵ(n, i::Int) = n.data.ϵ[i]
 setϵ!(n, i::Int, x) = n.data.ϵ[i] = x
 
-# multiplication levels
-getk(n) = n.data.k
+# multiplication levels, the first applies to the nodes in the input tree
+getk(n) = 1  # could be changed to check for `name(n) == "wgd"` or so
+getk(n::ModelNode) = n.data.k
+iswgm(n) = getk(n) > 1
 iswgd(n) = getk(n) == 2
 iswgt(n) = getk(n) == 3
+iswgmafter(n) = iswgm(parent(n))
 iswgdafter(n) = iswgd(parent(n))
 iswgtafter(n) = iswgt(parent(n))
+isawgm(n) = iswgm(n) || iswgm(parent(n))
+
+# gives the index for this wgd, for now we assume its id(n), i.e. we so that
+# the retention rate should be obtained from element id(n) in the q-vector of
+# the rates model. This entails the q-vector is not as compact as it should,
+# but this is very convenient.
+wgmid(n) = id(n) 
 
 """
     PhyloBDP(ratesmodel, tree, bound)
@@ -73,7 +89,7 @@ ConstantDLG{Float64}
 """
 mutable struct PhyloBDP{T,M,I} <: DiscreteMultivariateDistribution
     rates::M
-    nodes::Dict{I,ModelNode{T,I}}  # stored in postorder, redundant
+    nodes::Dict{I,ModelNode{T,I}}  # redundant, but convenient
     order::Vector{ModelNode{T,I}}
     bound::Int
     cond ::Symbol
@@ -81,19 +97,19 @@ end
 
 const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
 
-function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m::Int; 
-                  cond::Symbol=:root) where {T,I}
+# We assume the types of the RatesModel
+function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m; cond=:root) where {T,I}
     order = ModelNode{T,I}[]
+    nodes = Dict{I,eltype(order)}()
+    # x is the node to be copied, y is the parent of copy to created
     function walk(x, y)
-        y′ = isroot(x) ?
-            Node(id(x), NodeProbs(x, m+1, 1, T)) :
-            Node(id(x), NodeProbs(x, m+1, 1, T), y)
+        y′ = Node(id(x), NodeProbs(x, m+1, T), y)
         for c in children(x) walk(c, y′) end
         push!(order, y′)
-        return y′
+        nodes[id(y′)] = y′
     end
-    n = walk(node, nothing)
-    model = PhyloBDP(rates, Dict(id(n)=>n for n in order), order, m+1, cond)
+    walk(node, nothing)
+    model = PhyloBDP(rates, nodes, order, m+1, cond)
     setmodel!(model)  # assume the model should be initialized
     return model
 end
@@ -104,6 +120,8 @@ function Base.show(io::IO, m::PhyloBDP)
 end
 
 Base.getindex(m::PhyloBDP, i) = m.nodes[i]
+Base.length(m::PhyloBDP) = length(m.order)
+
 root(m::PhyloBDP) = m.order[end]
 NewickTree.getroot(m::PhyloBDP) = root(m)
 

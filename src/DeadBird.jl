@@ -16,6 +16,7 @@ import StatsBase: loglikelihood
 
 include("rmodels.jl")
 include("model.jl")
+include("wgmmodel.jl")
 include("countdag.jl")
 include("profile.jl")
 include("linear.jl")

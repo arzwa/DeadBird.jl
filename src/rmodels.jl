@@ -1,7 +1,7 @@
 # defined here, but implemented elsewhere
-function iswgd end
-function wgdid end
-function nonwgdchild end
+function iswgm end
+function wgmid end
+function nonwgmchild end
 
 abstract type Params{T} end
 
@@ -93,16 +93,16 @@ function (::ConstantDLG)(θ)
 end
 
 @with_kw struct ConstantDLGWGD{T} <: Params{T}
-    λ::T
-    μ::T
+    λ::T = 0.3
+    μ::T = 0.5
     q::Vector{T} = Float64[]
     κ::T = 0.
     η::T = 0.66
 end
 
 function getθ(m::ConstantDLGWGD, node) 
-    return iswgd(node) ?
-        (λ=m.λ, μ=m.μ, q=m.q[wgdid(node)], κ=m.κ) : 
+    return isawgm(node) ?
+        (λ=m.λ, μ=m.μ, q=m.q[wgmid(node)], κ=m.κ) : 
         (λ=m.λ, μ=m.μ, κ=m.κ, η=m.η)
 end
 
@@ -153,9 +153,9 @@ trans(m::DLG) = (
 end
 
 function getθ(m::DLGWGD, node)
-    return if iswgd(node)
-        c = nonwgdchild(node)
-        (λ=exp(m.λ[id(c)]), μ=exp(m.μ[id(c)]), q=m.q[wgdid(node)], κ=m.κ)
+    return if isawgm(node)
+        c = nonwgmchild(node)
+        (λ=exp(m.λ[id(c)]), μ=exp(m.μ[id(c)]), q=m.q[wgmid(node)], κ=m.κ)
     else
         (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=m.κ, η=m.η)
     end
