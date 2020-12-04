@@ -2,6 +2,7 @@ module DeadBird
 
 using NewickTree
 using Parameters
+using LinearAlgebra
 using Distributions
 using LightGraphs
 using StatsBase

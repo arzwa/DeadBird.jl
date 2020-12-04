@@ -11,7 +11,9 @@ struct NodeProbs{T}
     k::Int        # multiplication level
     t::Float64    # usually distances have a fixed type
     ϵ::Vector{T}  # extinction probabilities
-    W::Matrix{T}  # transition probability matrices (conditional process!)
+    W::Matrix{T}  # these are upper-triangular, but on log-scale...
+    #W::UpperTriangular{T,Matrix{T}} 
+        # transition probability matrices (conditional process!)
 end
 
 function NodeProbs(n, m::Int, ::Type{T}) where T
@@ -20,6 +22,7 @@ end
 
 function NodeProbs(name, k, t, m::Int, ::Type{T}) where T
     ϵ = fill(T(-Inf), 2)
+    #W = UpperTriangular(fill(T(-Inf), m, m))
     W = fill(T(-Inf), m, m)
     NodeProbs(name, k, t, ϵ, W)
 end
@@ -57,13 +60,12 @@ wgmid(n) = id(n)
 """
     PhyloBDP(ratesmodel, tree, bound)
 
-The phylogenetic birth-death process model as defined by Csuros &
-Miklos (2009). The bound is exactly defined by the data under
-consideration.
+The phylogenetic birth-death process model as defined by Csuros & Miklos
+(2009). The bound is exactly defined by the data under consideration.
 
-!!! note: implemented as a `<: DiscreteMultivariateDistribution`
-    (for convenience with Turing.jl), however does not support
-    a lot of the Distributions.jl interface.
+!!! note: implemented as a `<: DiscreteMultivariateDistribution` (for
+    convenience with Turing.jl), however does not support a lot of the
+    Distributions.jl interface.
 
 # Example
 ```julia-repl

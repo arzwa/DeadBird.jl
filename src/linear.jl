@@ -5,10 +5,10 @@
 # linear BDP are implemented here.
 
 # NOTE: when having family-specific rates, we might get a performance boost
-# when considering the node count bound for each family separately. Since
-# the transition probabilities (W) in that case have to be computed for
-# each family separately, it is not useful to compute values up to the 
-# upper bound of the entire matrix for a node in the speices tree...
+# when considering the node count bound for each family separately. Since the
+# transition probabilities (W) in that case have to be computed for each family
+# separately, it is not useful to compute values up to the upper bound of the
+# entire matrix for a node in the speices tree...
 
 # Not sure how to choose this constant, important for cancellation errors though
 const ΛMTOL = 1e-6  
@@ -21,11 +21,11 @@ probify(x) = max(min(x, one(x)), zero(x))
 """
     getϕψ(t, λ, μ)
 
-[Not exported] Returns `ϕ = μ(eʳ - 1)/(λeʳ - μ)` where `r = t*(λ-μ)` and `ψ =
-ϕ*λ/μ`, with special cases for λ ≈ μ. These methods should be implemented as
-to prevent underflow/overflow issues.  Note these quantities are also called p
-and q (in Csuros & Miklos) or α and β (in Bailey). Note that ϕ = P(Xₜ=0|X₀=1),
-i.e. the extinction probability for a single gene.
+Returns `ϕ = μ(eʳ - 1)/(λeʳ - μ)` where `r = t*(λ-μ)` and `ψ = ϕ*λ/μ`, with
+special cases for λ ≈ μ. These methods should be implemented as to prevent
+underflow/overflow issues.  Note these quantities are also called p and q (in
+Csuros & Miklos) or α and β (in Bailey). Note that ϕ = P(Xₜ=0|X₀=1), i.e. the
+extinction probability for a single gene.
 """
 function getϕψ(t, λ, μ)
     if λ == zero(λ)  # gain+loss 
@@ -50,13 +50,14 @@ end
 """
     extp(t, λ, μ, ϵ)
 
-[Not exported] Compute the extinction probability of a single lineage evolving
-according to a linear BDP for time `t` with rate `λ` and `μ` and with
-extinction probability of a single lineage at `t` equal to `ϵ`. This is
-`∑ᵢℙ{Xₜ=i|X₀=1}ϵ^i`
+Compute the extinction probability of a single lineage evolving according to a
+linear BDP for time `t` with rate `λ` and `μ` and with extinction probability
+of a single lineage at `t` equal to `ϵ`. This is `∑ᵢℙ{Xₜ=i|X₀=1}ϵ^i`
+
+!!! note
+    Takes ϵ on a [0,1] scale
 """
 function extp(t, λ, μ, ϵ)
-    # XXX: takes ϵ on probability scale!
     # NOTE: seems sufficiently stable that we don't need `probify`
     ϵ ≈ one(ϵ)  && return one(ϵ)
     ϵ ≈ zero(ϵ) && return getϕψ(t, λ, μ)[1]
@@ -78,13 +79,19 @@ end
 """
     getϕψ′(ϕ, ψ, ϵ)
 
-[Not exported] Note that we take ϵ on a probability scale!
+Adjusted ϕ and ψ for a linear BDP process with extinction probability ϵ after
+the process.
+
 ```
 ϕ′ = [ϕ(1-ϵ) + (1-ψ)ϵ]/[1 - ψϵ]
 ψ′ = [ψ(1-ϵ)]/[1-ψϵ]
 ```
+
 Some edge cases are when ϵ is 1 or 0. Other edge cases may be relevant when ψ
 and or ϕ is 1 or 0.
+
+!!! note
+    We take ϵ on [0,1] scale.
 """
 function getϕψ′(ϕ, ψ, ϵ)
     ϵ ≈ one(ϵ)  && return one(ϕ), zero(ψ)
@@ -102,10 +109,10 @@ end
 function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:LinearModel}
     isleaf(n) && return  # XXX or should we set ϵ to -Inf?
     θn = getθ(rates, n)
-    if iswgd(n) || iswgt(n)
+    if iswgm(n)
         c = first(children(n))
         ϵc = getϵ(c, 2)
-        ϵn = iswgd(n) ? wgdϵ(θn.q, ϵc) : wgtϵ(θn.q, ϵc)
+        ϵn = wgmϵ(θn.q, getk(n), ϵc) 
         setϵ!(c, 1, ϵn)
         setϵ!(n, 2, ϵn)
     else
@@ -119,22 +126,28 @@ function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:LinearModel}
     end
 end
 
-#wgdϵ(q, ϵ) = q*ϵ^2 + (one(q) - q)*ϵ
-#wgtϵ(q, ϵ) = q*ϵ^3 + 2q*(one(q) - q)*ϵ^2 + (one(q) - q)^2*ϵ
+# takes ϵ on log scale! WGT wrong?
+#wgdϵ(q, ϵ) = logaddexp(log(q)+2ϵ, log1p(-q) + ϵ)
+#wgtϵ(q, ϵ) = logsumexp([log(q)+3ϵ, log(2q)+log1p(-q)+2ϵ, 2*log1p(-q)+ϵ])
 
-# takes ϵ on log scale!
-wgdϵ(q, ϵ) = logaddexp(log(q)+2ϵ, log1p(-q) + ϵ)
-wgtϵ(q, ϵ) = logsumexp([log(q)+3ϵ, log(2q)+log1p(-q)+2ϵ, 2*log1p(-q)+ϵ])
+"""
+    wgmϵ(q, k, logϵ)
+
+Compute the log-extinction probability of a single lineage going through a
+k-plication event, given the extinction probability of a single lineage after
+the WGM event. Assumes the single parameter WGM retention model (assuming a
+single gene before the WGM, the number of retained genes after the WGM is a rv
+X' = 1 + Y where Y is Binomial(k - 1, q)).
+"""
+wgmϵ(q, k, logϵ) = logϵ + (k - 1) * log(q * (exp(logϵ) - 1.) + 1.)
 
 # Conditional survival transition probability matrix
 function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
     isroot(n) && return
     ϵ = getϵ(n, 2)
     θ = getθ(rates, n)
-    if iswgdafter(n)
-        wstar_wgd!(n.data.W, distance(n), θ, ϵ)
-    elseif iswgtafter(n)
-        wstar_wgt!(n.data.W, distance(n), θ, ϵ)
+    if iswgmafter(n)
+        wstar_wgm!(n.data.W, getk(parent(n)), θ, ϵ)
     else
         wstar!(n.data.W, distance(n), θ, ϵ)
     end
@@ -147,9 +160,9 @@ Compute the transition probabilities for the conditional survival process
 recursively (not implemented using recursion though!). Note that the resulting
 transition matrix is *not* a stochastic matrix of some Markov chain.
 """
-function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
+function wstar!(w::AbstractMatrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ
-    l = size(w)[1]-1
+    l = size(w, 1) - 1
     ϕ , ψ  = getϕψ(t, λ, μ)        # p , q  in Csuros
     ϕ′, ψ′ = getϕψ′(ϕ, ψ, exp(ϵ))  # p', q' in Csuros
     a = 1. - ϕ′
@@ -171,41 +184,31 @@ function wstar!(w::Matrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '0
         # no gain (κ = 0.)
         w[1,1] = zero(T)
     end
-    for m=1:l, n=1:m
+    for m=1:l, n=1:m   # should we go from 1 to m?
         w[n+1, m+1] = logaddexp(d + w[n+1, m], c + w[n, m])
     end
 end
 
-# XXX untested since brought on log-scale!
-function wstar_wgd!(w, t, θ, ϵ)
+# correct for WGDs at least
+function wstar_wgm!(w, k, θ, logϵ)
     @unpack λ, μ, q = θ
-    l1me = log1mexp(ϵ)
-    a = log((1. - q) + 2q*exp(ϵ)) + l1me
-    b = log(q) + 2l1me
-    w[1,1] = zero(q)
-    w[2,2] = a
-    w[2,3] = b
-    l = size(w)[1]-1
-    for i=1:l, j=2:l
-        w[i+1, j+1] = logaddexp(a + w[i,j], b + w[i, j-1]) 
+    l = size(w, 1) - 1
+    w[1,1] = zero(λ)  # gain is not involved at wgm nodes 0->0 w.p. 1
+    ϵ = exp(logϵ)
+    for j=1:k
+        p = zero(λ)
+        for n=j:k
+            p_ = (1. - ϵ)^j * ϵ^(n-j) * q^(n-1) * (1. - q)^(k-n)
+            p += binomial(n, j)*binomial(k-1, n-1)*p_  # couldn't obtain closed form
+        end
+        w[2, j+1] = log(p)
     end
-end
-
-function wstar_wgt!(w, t, θ, ϵ)
-    @unpack λ, μ, q = θ
-    q1 = log(q)
-    q2 = log(2q) + log(1. - q)
-    q3 = 2log(1. - q)
-    a = logsumexp([q1+l1me, log(2.)+q2+ϵ+l1me, log(3.)+q3+2ϵ+l1me])
-    b = logaddexp(q2 + 2l1me, log(3.) + q3 + ϵ + 2l1me)
-    c = q3 + 3l1me
-    w[1,1] = zero(q)
-    w[2,2] = a
-    w[2,3] = b
-    w[2,4] = c
-    l = size(w)[1]-1
-    for i=1:l, j=3:l
-        w[i+1, j+1] = logsumexp([a+w[i, j], b+w[i, j-1], c+w[i, j-2]])
+    for i=2:l, j=i:(min(k*i,l))
+        w[i+1, j+1] = -Inf  # for safety 
+        # for a `k`-plication, we have min(j-1, k) terms to some to get pᵢⱼ
+        for n=1:min(j-i+1,k)
+            w[i+1, j+1] = logaddexp(w[i+1, j+1], w[2, n+1] + w[i, j-n+1])
+        end
     end
 end
 

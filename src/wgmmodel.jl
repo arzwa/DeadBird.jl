@@ -1,4 +1,4 @@
-# This is fine and wuite clean I guess
+# This is fine and quite clean I guess
 function _insertwgm!(node::ModelNode{T,I}, n, k, t) where {T,I}
     # initially: u -l→ v 
     # the goal:  u -(l-t)→ w -0→ x -t→ v
