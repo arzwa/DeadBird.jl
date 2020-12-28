@@ -22,7 +22,7 @@ end
 function getextra(df, tree) 
     df, cols = getcountsof(df, tree)
     df, cols = nonextinctfilter(df, tree)
-    df[cols] = df[cols] .-= 1
+    df[:,cols] = df[:,cols] .-= 1
     (df=df, cols=cols)
 end
 
