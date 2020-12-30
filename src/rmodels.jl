@@ -1,176 +1,96 @@
 # defined here, but implemented elsewhere
-function iswgm end
+function isawgm end
 function wgmid end
 function nonwgmchild end
 
-abstract type Params{T} end
+"""
+    RatesModel
+
+Abstract type for diferent rate models for phylogenies (e.g. constant rates
+across the tree, branch-specific rates, models with WGD nodes, ...).
+"""
+abstract type RatesModel{T} end
+const LinearModel{T} = RatesModel{T}  # currently non-linear models no longer supported
+
+function Base.NamedTuple(m::M) where M<:RatesModel
+    return (; (k => getfield(m, k) for k in propertynames(m))...)
+end
+
+newmodel(m::M, θ) where M<:RatesModel = M(merge(NamedTuple(m), θ)...)
 
 """
-    RatesModel(params; fixed=(), rootprior=:shifted)
+    getθ(m<:RatesModel, node)
 
-!!! note 
-    `rootprior` currently takes a symbol `:shifted | :geometric`, but in the
-    future should likely become a type...
-
-!!! note
-    Having the transforms in there is getting obsolete given that we use Turing
-    exclusively...
-
-# Example
-```julia-repl
-julia> rates = RatesModel(ConstantDLG(λ=0.1, μ=0.1), fixed=(:κ, :η))
-RatesModel with (:κ, :η) fixed
-ConstantDLG{Float64}
-  λ: Float64 0.1
-  μ: Float64 0.1
-  κ: Float64 0.0
-  η: Float64 0.66
-```
+Get the parameter values from a `RatesModel` relevant for a particular node in
+a phylogeny. Should be implemented for each RatesModel where parameters differ
+across branches.
 """
-struct RatesModel{T,M<:Params{T},V}
-    params::M
-    fixed ::Tuple
-    trans ::V
-    rootprior::Symbol
-end
-
-function RatesModel(θ; fixed=(), rootprior=:shifted)
-    RatesModel(θ, fixed, gettrans(θ, fixed), rootprior)
-end
-
-Base.eltype(m::RatesModel{T}) where T = T
-
-function Base.show(io::IO, m::RatesModel) 
-    write(io, "RatesModel with $(m.fixed) fixed and ")
-    write(io, "$(m.rootprior) prior on root\n$(m.params)")
-end
-
-getθ(m::RatesModel, node) = getθ(m.params, node)
-getp(m::P, n) where {T,P<:Params{T}} = hasfield(P, :p) &&
-    length(m.p) > 0 && isleaf(n) ? m.p[id(n)] : 0.
-
-# HACK: a little bit of metaprogramming to allow fixed parameters, necessary?
-function gettrans(p::P, fixed) where P<:Params
-    inner = join(["$k=$v," for (k,v) in pairs(trans(p)) if k ∉ fixed])
-    expr  = Meta.parse("as(($inner))")
-    eval(expr)
-end
-
-(m::RatesModel)(x::AbstractVector) = m(m.trans(x))
-function (m::RatesModel)(θ)
-    θ′ = merge(θ, [k=>findfield(m.params, k) for k in m.fixed])
-    RatesModel(m.params(θ′), m.fixed, m.trans, m.rootprior)
-end
-
-function findfield(p::P, f) where {P<:Params{T} where T}
-    hasfield(P, f) ? getfield(p, f) : findfield(p.params, f)
-end
-
-Base.rand(m::M) where M<:RatesModel = m(m.trans(randn(dimension(m.trans))))
+getθ(m::M, node) where M<:RatesModel = m  # default
 
 """
     ConstantDLG{T}
 
-Simple constant rates duplication-loss and gain model. All nodes of
-the tree are associated with the same parameters (duplication rate λ,
-loss rate μ, gain rate κ). This assumes a shifted geometric distribution
-on the family size at the root with mean 1/η.
+Simple constant rates duplication-loss and gain model. All nodes of the tree
+are associated with the same parameters (duplication rate λ, loss rate μ, gain
+rate κ). 
 """
-@with_kw struct ConstantDLG{T} <: Params{T}
+@with_kw struct ConstantDLG{T} <: RatesModel{T}
     λ::T = 0.1
     μ::T = 0.1
     κ::T = 0.
-    η::T = 0.66
 end
 
-promote_nt(nt) = (;zip(keys(nt), promote(nt...))...)
+"""
+    ConstantDLGWGM{T}
 
-getθ(m::ConstantDLG, node) = m
-trans(::ConstantDLG) = (λ=asℝ₊, μ=asℝ₊, κ=asℝ₊, η=as𝕀)
-function (::ConstantDLG)(θ)
-    t = promote_nt(θ)
-    ConstantDLG(; λ=t.λ, μ=t.μ, κ=t.κ, η=t.η)
-end
-
-@with_kw struct ConstantDLGWGD{T} <: Params{T}
+Similar to `ConstantDLG`, but with a field for whole-genome multiplication
+(WGM) nodes in the phylogeny, which have a single retention rate parameter
+`q` each.
+"""
+@with_kw struct ConstantDLGWGM{T} <: RatesModel{T}
     λ::T = 0.3
     μ::T = 0.5
-    q::Vector{T} = Float64[]
     κ::T = 0.
-    η::T = 0.66
+    q::Vector{T} = Float64[]
 end
 
-function getθ(m::ConstantDLGWGD, node) 
-    return isawgm(node) ?
-        (λ=m.λ, μ=m.μ, q=m.q[wgmid(node)], κ=m.κ) : 
-        (λ=m.λ, μ=m.μ, κ=m.κ, η=m.η)
-end
-
-trans(m::ConstantDLGWGD) = (
-    λ=asℝ₊, μ=asℝ₊,
-    q=as(Array, as𝕀, length(m.q)),
-    κ=asℝ₊, η=as𝕀)
-
-function (::ConstantDLGWGD)(θ)
-    T = eltype(θ.q)
-    ConstantDLGWGD(;λ=T(θ.λ), μ=T(θ.μ), q=θ.q, κ=T(θ.κ), η=T(θ.η))
-end
+getθ(m::ConstantDLGWGM, node) = 
+    (λ=m.λ, μ=m.μ, κ=m.κ, q=isawgm(node) ? m.q[wgmid(node)] : nothing)
 
 """
     DLG{T}
 
-Simple branch-wise rates duplication-loss and gain model.  The prior
-distribution on the root is either geometric or shifted geometric with
-parameter η,
+Simple branch-wise rates duplication-loss and gain model.  
 """
-@with_kw struct DLG{T} <: Params{T}
+@with_kw struct DLG{T} <: RatesModel{T}
     λ::Vector{T}
     μ::Vector{T}
     κ::Vector{T}
-    η::T = 0.66
 end
 
+# XXX: why exactly do we keep them on log-scale?
 getθ(m::DLG, node) = (
     λ=exp(m.λ[id(node)]), 
     μ=exp(m.μ[id(node)]), 
-    κ=exp(m.κ[id(node)]), 
-    η=m.η)
+    κ=exp(m.κ[id(node)])) 
 
-trans(m::DLG) = (
-    λ=as(Array, asℝ, length(m.λ)),
-    μ=as(Array, asℝ, length(m.λ)),
-    κ=as(Array, asℝ, length(m.λ)), 
-    η=as𝕀)
+"""
+    DLGWGM{T}
 
-(::DLG)(θ) = DLG(; λ=θ.λ, μ=θ.μ, κ=θ.κ, η=eltype(θ.λ)(θ.η))
-
-@with_kw struct DLGWGD{T} <: Params{T}
+Similar to `DLG`, but with WGM nodes, see also `ConstantDLGWGM`.
+"""
+@with_kw struct DLGWGM{T} <: RatesModel{T}
     λ::Vector{T}
     μ::Vector{T}
     q::Vector{T}
-    κ::T = 0.
-    η::T = 0.66
+    κ::Vector{T}
 end
 
-function getθ(m::DLGWGD, node)
+function getθ(m::DLGWGM, node)
     return if isawgm(node)
         c = nonwgmchild(node)
-        (λ=exp(m.λ[id(c)]), μ=exp(m.μ[id(c)]), q=m.q[wgmid(node)], κ=m.κ)
+        (λ=exp(m.λ[id(c)]), μ=exp(m.μ[id(c)]), κ=exp(m.κ[id(c)]), q=m.q[wgmid(node)])
     else
-        (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=m.κ, η=m.η)
+        (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=exp(m.κ[id(node)]), η=m.η)
     end
 end
-
-trans(m::DLGWGD) = (
-    λ=as(Array, asℝ, length(m.λ)),
-    μ=as(Array, asℝ, length(m.λ)),
-    q=as(Array, as𝕀, length(m.q)),
-    κ=asℝ₊, η=as𝕀)
-
-function (::DLGWGD)(θ)
-    DLGWGD(; λ=θ.λ, μ=θ.μ, q=θ.q, κ=eltype(θ.λ)(θ.κ), η=eltype(θ.λ)(θ.η))
-end
-
-const LinearModel = RatesModel{T,V} where 
-    {T,V<:Union{ConstantDLG,DLG,DLGWGD,ConstantDLGWGD}}
-

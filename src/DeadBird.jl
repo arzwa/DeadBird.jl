@@ -12,9 +12,11 @@ using ThreadTools
 using RecipesBase
 using Printf
 using Random
+using SpecialFunctions
 import StatsBase: loglikelihood
 
 include("rmodels.jl")
+include("rootprior.jl")
 include("model.jl")
 include("wgmmodel.jl")
 include("countdag.jl")
@@ -47,13 +49,13 @@ function example_data()
     df = DataFrame(:A=>[1,1,3,0], :B=>[0,1,0,3], :C=>[1,1,4,4])
     dag, bound = CountDAG(df, tr)
     mat, bound = ProfileMatrix(df, tr)
-    rates = RatesModel(ConstantDLG(λ=0.1,μ=0.1), fixed=(:κ,:η))
-    model = PhyloBDP(rates, tr, bound)
+    model = PhyloBDP(ConstantDLG(), ShiftedGeometric(0.66), tr, bound)
     (tr=tr, df=df, dag=dag, mat=mat, model=model)
 end
 
 export CountDAG, ProfileMatrix, Profile
-export ConstantDLG, DLG, RatesModel, PhyloBDP, ModelArray
+export ConstantDLG, DLG, PhyloBDP, ModelArray
+export ShiftedGeometric, ShiftedBetaGeometric
 export simulate
 
 end # module

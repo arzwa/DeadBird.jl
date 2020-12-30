@@ -1,16 +1,17 @@
 # Likelihood and other methods specific to the linear model
 # Actually the matter is probably more about the branching property than about
 # linearity, e.g. rates that grow quadratic with the population size might also
-# admit a Csuros-Miklos like algorithm.  At any rate, only methods for the
+# admit a Csuros-Miklos like algorithm. At any rate, only methods for the
 # linear BDP are implemented here.
 
 # NOTE: when having family-specific rates, we might get a performance boost
 # when considering the node count bound for each family separately. Since the
 # transition probabilities (W) in that case have to be computed for each family
 # separately, it is not useful to compute values up to the upper bound of the
-# entire matrix for a node in the speices tree...
+# entire matrix for a node in the species tree...
 
-# Not sure how to choose this constant, important for cancellation errors though
+# Not sure how to choose this constant, fairly important for cancellation
+# errors though
 const ΛMTOL = 1e-6  
 const LMTOL = log(ΛMTOL)
 
@@ -18,6 +19,9 @@ approx1(x) = x ≈ one(x) ? one(x) : x
 approx0(x) = x ≈ zero(x) ? zero(x) : x
 probify(x) = max(min(x, one(x)), zero(x))
 
+
+# Conditional survival transition probabilities and extinction probabilities
+# ==========================================================================
 """
     getϕψ(t, λ, μ)
 
@@ -76,15 +80,16 @@ function extp(t, λ, μ, ϵ)
     end
 end
 
-"""
+@doc raw"""
     getϕψ′(ϕ, ψ, ϵ)
 
 Adjusted ϕ and ψ for a linear BDP process with extinction probability ϵ after
 the process.
 
-```
-ϕ′ = [ϕ(1-ϵ) + (1-ψ)ϵ]/[1 - ψϵ]
-ψ′ = [ψ(1-ϵ)]/[1-ψϵ]
+```math
+\phi' = \frac{\psi(1-\epsilon) + (1 - \psi) \epsilon}{1 - \psi \epsilon}
+
+\psi' = \frac{\psi(1-\epsilon)}{1 - \psi \epsilon}
 ```
 
 Some edge cases are when ϵ is 1 or 0. Other edge cases may be relevant when ψ
@@ -125,10 +130,6 @@ function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:LinearModel}
         end
     end
 end
-
-# takes ϵ on log scale! WGT wrong?
-#wgdϵ(q, ϵ) = logaddexp(log(q)+2ϵ, log1p(-q) + ϵ)
-#wgtϵ(q, ϵ) = logsumexp([log(q)+3ϵ, log(2q)+log1p(-q)+2ϵ, 2*log1p(-q)+ϵ])
 
 """
     wgmϵ(q, k, logϵ)
@@ -212,29 +213,18 @@ function wstar_wgm!(w, k, θ, logϵ)
     end
 end
 
-# Root integration
-function ∫root(p, rates, ϵ) 
-    @unpack η = rates.params
-    if rates.rootprior == :shifted 
-        ℓ = ∫rootshiftgeometric(p, η, ϵ)
-    elseif rates.rootprior == :geometric
-        ℓ = ∫rootgeometric(p, η, ϵ)
-    elseif rates.rootprior == :poisson
-        ℓ = ∫rootpoisson(p, η, ϵ)
-    else
-        throw("$(rates.rootprior) not implemented!")
-    end
-end
 
-# We could work with types as well and use dispatch...
+# Conditioning factors
+# ====================
+"""
+    conditionfactor(model)
+
+Compute the condition factor for the model for the associated data filtering
+strategy. 
+"""
 function conditionfactor(model)
     return if model.cond == :root
-        @assert model.rates.rootprior == :shifted "conditional "*
-            "likelihood `$(model.cond)` only implemented for "*
-            "shifted geometric prior on the root..."
         nonextinctfromrootcondition(model)
-    #elseif model.cond == :nowhere
-    #    extinctnowherecondition(model)
     elseif model.cond == :none
         0.
     else
@@ -243,93 +233,31 @@ function conditionfactor(model)
 end
 
 """
-    ∫rootshiftgeometric(ℓ, η, ϵ)
+    nonextinctfromrootcondition(model)
 
-Integrate the loglikelihood at the root for the conditional process, with the
-prior on the number of lineages existing (X) at the root a shifted geometric
-distribution with mean 1/η, i.e. X ~ Geometric(η)+1
-
-Σₙ ℓ[n] × Σᵢ (n+i, choose i) ϵⁱ(1-ϵ)ⁿ η(1-η)ⁿ⁺ⁱ⁻¹
-
-`ℓ[i]` is ℙ{data|Y=i}, where Y is the number of lineages at the root that leave
-observed descendants. `le` log extinction probablity lϵ.  This function
-computes ℙ{data|X} based on ℙ{data|Y} (right?).  Assumes at least one ancestral
-gene.
+Compute the probability that a family existing at the root of the species tree
+leaves observed descendants in both clades stemming from the root, i.e. does
+not go extinct in any of the two clades stemming from the root. This uses the
+marginalization of the extinction probability over the prior distribution on
+the number of genes at the root using [`marginal_extinctionp`](@ref)
 """
-@inline function ∫rootshiftgeometric(ℓ, η, lϵ)
-    p = -Inf
-    for i in 2:length(ℓ)
-        f = (i-1)*log1mexp(lϵ) + (i-2)*log(1. - η) + log(η)
-        f -= i*log1mexp(log(one(η) - η)+lϵ)
-        p = logaddexp(p, ℓ[i] + f)
-    end
-    return p
-end
-
-"""
-    ∫rootgeometric(ℓ, η, ϵ)
-
-Σₙ ℓ[n] × Σᵢ (n+i, choose i) ϵⁱ(1-ϵ)ⁿ η(1-η)ⁿ⁺ⁱ
-
-There are two differences with the shifted geometric formula, (1) exponent to
-(1-η) is n+i instead of n+i-1, and (2) we start from the X=0 state, not the X=1
-state
-"""
-@inline function ∫rootgeometric(ℓ, η, lϵ)
-    p = -Inf
-    for i in 1:length(ℓ)
-        f = (i-1)*(log1mexp(lϵ) + log(1. - η)) + log(η)
-        f -= i*log1mexp(log(one(η) - η)+lϵ)
-        p = logaddexp(p, ℓ[i] + f)
-    end
-    return p
-end
-
-"""
-    ∫rootpoisson(ℓ, η, ϵ)
-
-Relevant mainly for the gain+loss model. We assume `η` is the mean of the Poisson
-distribution (for the stationary distribution of the GL model this is `ν/μ`), and
-`ϵ` is the extinction probability for a single lineage at the root.
-"""
-@inline function ∫rootpoisson(ℓ, η, lϵ)
-    p = -Inf
-    r = η*(1. - exp(lϵ))
-    r < zero(r) && return p
-    d = Poisson(r) 
-    for i in 1:length(ℓ)
-        p = logaddexp(p, ℓ[i] + logpdf(d, i-1))
-    end
-    return p
-end
-
-# This is the non-extinction in both clades stemming from the root condition
-# XXX: assumes the shifted geometric prior!
-# XXX: only for linear model, since it works from the extinction probability
-# for a single lineage and assumes the branching property
-# TODO: rewrite the whole prior on root/conditioning implementation to be work
-# for more easily for all relevant priors...
-function nonextinctfromrootcondition(model::LPhyloBDP)
-    @unpack η = getθ(model.rates, root(model))
-    lη = log(η)
+function nonextinctfromrootcondition(model)
     o  = root(model)
-    ϵo = geomϵp(getϵ(o, 2), lη)  # XXX some ugly log(exp(log(exp...)))
-    ϵc = map(c->geomϵp(getϵ(c, 1), lη), children(o)) |> logsumexp
+    ϵo = marginal_extinctionp(model.rootp, getϵ(o, 2)) 
+    ϵc = -Inf
+    for c in children(o)
+        ϵc = logaddexp(ϵc, marginal_extinctionp(model.rootp, getϵ(c, 1)))
+    end
     log(probify(1. - exp(ϵc) + exp(ϵo)))
 end
 
-geomϵp(lϵ, lη) = lη + lϵ -log1mexp(log1mexp(lη) + lϵ)
 
-# XXX: see pgf technique (implemented in Whale) for nowhere extinct
-# condition...
-
-
-# Methods using the CountDAG data structure
+# Loglikelihood methods using the CountDAG data structure
+# =======================================================
 """
     loglikelihood!(dag::CountDAG, model::PhyloBDP)
 
-Compute the log likelihood on the DAG using the Csuros & Miklos
-algorithm.
+Compute the log likelihood on the DAG using the Csuros & Miklos algorithm.
 """
 function loglikelihood!(dag::CountDAG, model::LPhyloBDP{T}) where T
     for level in dag.levels  # parallelism possible within levels
@@ -338,19 +266,15 @@ function loglikelihood!(dag::CountDAG, model::LPhyloBDP{T}) where T
         end
     end
     ℓ = acclogpdf(dag, model) - dag.nfam*conditionfactor(model)
-    #!isfinite(ℓ) && @warn "ℓ not finite"
     isfinite(ℓ) ? ℓ : -Inf
 end
-# NOTE: maybe a distributed approach using SharedArray or DArray would be more
-# efficient, but it's much less convenient (and not so compatible with AD?)
 
 function acclogpdf(dag::CountDAG, model::LPhyloBDP{T}) where T
     @unpack graph, ndata, parts = dag
-    @unpack η = getθ(model.rates, root(model))
     ϵ = getϵ(root(model), 2)
     ℓ = zero(T)
     for n in outneighbors(graph, nv(graph))
-        ℓ += ndata[n].count*∫root(parts[n], model.rates, ϵ)
+        ℓ += ndata[n].count * marginalize(model.rootp, parts[n], ϵ)
     end
     return ℓ
 end
@@ -384,13 +308,14 @@ end
 
 # computes the site loglikelihood for each site pattern
 function sitepatterns_ℓ(dag, model, nodes)
-    @unpack graph, ndata, parts = dag
-    @unpack η = getθ(model.rates, model[1])
     ϵ = getϵ(model[1], 2)
-    [∫root(parts[n], model.rates, ϵ) for n in nodes]
+    [marginalize(model.rootp, dag.parts[n], ϵ) for n in nodes]
 end
 
-# Likelihood using the Profile(Matrix) data structure
+
+# Likelihood using the Profile(Matrix) data structure 
+# ===================================================
+
 # NOTE: condition is optional, because for a full matrix it is of course
 # redundant to compute the same condition factor many times.  Nevertheless, we
 # still want to have loglikelihood(profile) to give the correct loglikelihood
@@ -398,21 +323,19 @@ end
 function loglikelihood!(p::Profile,
         model::LPhyloBDP{T},
         condition=true) where T
-    @unpack η = getθ(model.rates, root(model))
     for n in model.order
         cm!(p, n, model)
     end
-    ℓ = ∫root(p.ℓ[1], model.rates, getϵ(root(model), 2))
+    ℓ = marginalize(model.rootp, p.ℓ[1], getϵ(root(model), 2))
     if condition
         ℓ -= conditionfactor(model)
     end
-    isfinite(ℓ) ? ℓ : -Inf
+    return isfinite(ℓ) ? ℓ : -Inf
 end
 
-# Major refactor
-# Somwehat more intelligle, and doesn't allocate large matrices. However, it
-# is not faster (but numerically more stable). It should be more amenable to
-# further optimizations though...
+
+# Csuros & Miklos algorithm for computing the conditional survival likelihood
+# ===========================================================================
 """
     cm!(dag, node, model)
 
@@ -485,13 +408,7 @@ end
     end
 end
 
-"""
-    logmatvecmul(A, x)
-
-Compute log.(Ax) given log.(A) and log.(x).
-Can this be optimized to have less allocs?  Doing it in-place didn't seem to
-help much?
-"""
+# Compute log.(Ax) given log.(A) and log.(x).
 function logmatvecmul(A::AbstractMatrix{T}, x::Vector{T}) where T
     y = similar(x)
     for i=1:length(x)

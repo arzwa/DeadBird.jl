@@ -1,5 +1,9 @@
-# I think a representation like the following is good,
-# it does not have to be  modified at any point during agorithms
+"""
+    NodeData{I}
+
+Keeps some relevant information for nodes in the DAG representation of a
+phylogenetic profile matrix.
+"""
 struct NodeData{I}
     snode::I   # species tree node
     count::Int
@@ -9,9 +13,9 @@ end
 """
     CountDAG(df::DataFrame, tree::Node)
 
-Get a `CountDAG` from a count matrix The directed acyclic graph (DAG)
-representation of a phylogenetic profile for an (assumed known) species tree.  
-This is a [multitree](https://en.wikipedia.org/wiki/Multitree)
+Get a `CountDAG` from a count matrix, i.e. the directed acyclic graph (DAG)
+representation of a phylogenetic profile for an (assumed known) species tree.
+This is a [multitree](https://en.wikipedia.org/wiki/Multitree). 
 
 # Example
 ```julia-repl
@@ -120,8 +124,8 @@ function Distributions.logpdf(m::PhyloBDP{T}, x::CountDAG) where T
     loglikelihood!(copydag(x, T), m)
 end
 
-function Distributions.logpdf(m::MixtureModel{VF,VS,<:PhyloBDP{T}}, 
-                              x::CountDAG) where {VF,VS,T} 
+function Distributions.logpdf(
+        m::MixtureModel{VF,VS,<:PhyloBDP{T}}, x::CountDAG) where {VF,VS,T} 
     loglikelihood!(copydag(x, T), m)
 end
 

@@ -12,8 +12,6 @@ struct NodeProbs{T}
     t::Float64    # usually distances have a fixed type
     ϵ::Vector{T}  # extinction probabilities
     W::Matrix{T}  # these are upper-triangular, but on log-scale...
-    #W::UpperTriangular{T,Matrix{T}} 
-        # transition probability matrices (conditional process!)
 end
 
 function NodeProbs(n, m::Int, ::Type{T}) where T
@@ -22,7 +20,6 @@ end
 
 function NodeProbs(name, k, t, m::Int, ::Type{T}) where T
     ϵ = fill(T(-Inf), 2)
-    #W = UpperTriangular(fill(T(-Inf), m, m))
     W = fill(T(-Inf), m, m)
     NodeProbs(name, k, t, ϵ, W)
 end
@@ -89,31 +86,41 @@ ConstantDLG{Float64}
 )
 ```
 """
-mutable struct PhyloBDP{T,M,I} <: DiscreteMultivariateDistribution
+struct PhyloBDP{T,M,P,I} <: DiscreteMultivariateDistribution
     rates::M
+    rootp::P
     nodes::Dict{I,ModelNode{T,I}}  # redundant, but convenient
     order::Vector{ModelNode{T,I}}
     bound::Int
     cond ::Symbol
 end
 
-const LPhyloBDP{T} = PhyloBDP{T,V} where {T,V<:LinearModel}
+const LPhyloBDP{T} = PhyloBDP{T,M} where {T,M<:LinearModel}
 
 # We assume the types of the RatesModel
-function PhyloBDP(rates::RatesModel{T}, node::Node{I}, m; cond=:root) where {T,I}
+function PhyloBDP(rates :: RatesModel{T}, 
+                  rootp :: RootPrior, 
+                  node  :: Node{I}, 
+                  bound :: Int; 
+                  cond  :: Symbol = :root) where {T,I}
     order = ModelNode{T,I}[]
     nodes = Dict{I,eltype(order)}()
     # x is the node to be copied, y is the parent of copy to created
     function walk(x, y)
-        y′ = Node(id(x), NodeProbs(x, m+1, T), y)
+        y′ = Node(id(x), NodeProbs(x, bound+1, T), y)
         for c in children(x) walk(c, y′) end
         push!(order, y′)
         nodes[id(y′)] = y′
     end
     walk(node, nothing)
-    model = PhyloBDP(rates, nodes, order, m+1, cond)
+    model = PhyloBDP(rates, rootp, nodes, order, bound+1, cond)
     setmodel!(model)  # assume the model should be initialized
     return model
+end
+
+# handy constructor based on pre-existing model
+function (m::PhyloBDP)(; rates=m.rates, rootp=m.rootp, bound=m.bound-1)
+    PhyloBDP(rates, rootp, m.order[end], bound, cond=m.cond)
 end
 
 function Base.show(io::IO, m::PhyloBDP) 
@@ -133,18 +140,6 @@ end
 
 Base.getindex(m::ModelArray, i) = m.models[i]
 Base.length(m::ModelArray) = length(m.models)
-
-# These are two 'secondary constructors',
-# i.e. they establish a model based on an already available model structure
-# and a new set of parameters.
-# The first two make a copy (the second only adapts the bound), while the last
-# modifies the existing model.
-(m::PhyloBDP)(θ, b=m.bound-1) = PhyloBDP(m.rates(θ), m.order[end], b, cond=m.cond)
-(m::PhyloBDP)(b::Int) = PhyloBDP(m.rates, m.order[end], b, cond=m.cond)
-function update!(m::PhyloBDP, θ)
-    m.rates = m.rates(θ)
-    setmodel!(m)
-end
 
 function setmodel!(model::LPhyloBDP)
     @unpack order, rates = model

@@ -31,43 +31,61 @@ readtree = readnw ∘ readline
             @test extp(t, λ, μ, 0.) ≈ ϕ
         end
     end
+
+    @testset "Beta-geometric marginalization" begin
+        # for large ζ the BG distribution shoudl give indistinguishable results compared
+        # to the Shifted Geometric.
+        d1 = DeadBird.ShiftedBetaGeometric(0.9, 1e6)
+        d2 = DeadBird.ShiftedGeometric(0.9)
+        ℓvec = log.(rand(10) ./ 100)
+        a = DeadBird.marginalize(d1, ℓvec, log(0.1))
+        b = DeadBird.marginalize(d2, ℓvec, log(0.1))
+        @test a ≈ b atol=1e-4
+    end
     
     @testset "CountDAG and Profile, default linear BDP" begin
         g = dag.graph
         @test outdegree(g, nv(g)) == length(unique(eachrow(df)))
         @test sum([dag.ndata[i].count for i in outneighbors(g, nv(g))]) == size(df)[1]
-        r = RatesModel(ConstantDLG(λ=0.1, μ=.12, κ=0.0, η=0.9))
-        m = PhyloBDP(r, tr, bound)
+        p = ShiftedGeometric(0.9)
+        θ = ConstantDLG(λ=0.1, μ=.12, κ=0.0)
+        m = PhyloBDP(θ, p, tr, bound)
         @test loglikelihood!(dag, m) ≈ -251.0360331682765
         @test loglikelihood!(mat, m) ≈ -251.0360331682765
     end
     
     @testset "Gradient linear BDIP" begin
-        r = RatesModel(ConstantDLG(λ=0.1, μ=.12, κ=0.11, η=0.9))
-        m = PhyloBDP(r, tr, bound)
         y = [0.1, 0.12, 0.11, 0.90]
-        g1 = ForwardDiff.gradient(x->logpdf(m((λ=x[1], μ=x[2], κ=x[3], η=x[4])), dag), y)
-        g2 = ForwardDiff.gradient(x->logpdf(m((λ=x[1], μ=x[2], κ=x[3], η=x[4])), mat), y)
+        function gradfun(x, data)
+            r = ConstantDLG(x[1:3]...)
+            p = ShiftedGeometric(x[4])
+            m = PhyloBDP(r, p, tr, bound)
+            return logpdf(m, data)
+        end
+        g1 = ForwardDiff.gradient(x->gradfun(x, dag), y)
+        g2 = ForwardDiff.gradient(x->gradfun(x, mat), y)
         g_ = [98.9170420717962, -7.469684450808845, 63.49317519767404, 3.000649823968922]
         @test g1 ≈ g2 ≈ g_
     end
 
     @testset "CountDAG and Profile, DLG" begin
         for i=1:10
-            rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0.1, η=1/1.5), rootprior=:geometric)
-            model = PhyloBDP(rates(randn(4)), tr, bound, cond=:none)
-            l1 = loglikelihood!(mat, model)
-            l2 = loglikelihood!(dag, model)
+            r = ConstantDLG(rand(3)...)
+            p = Geometric(rand())
+            m = PhyloBDP(r, p, tr, bound, cond=:none)
+            l1 = loglikelihood!(mat, m)
+            l2 = loglikelihood!(dag, m)
             @test isfinite(l1)
             @test l1 ≈ l2
         end
     end
 
-    @testset "GL model" begin
-        r1 = RatesModel(ConstantDLG(λ=.0,   μ=.2, κ=0.5, η=0.5/0.2), rootprior=:poisson)
-        r2 = RatesModel(ConstantDLG(λ=1e-7, μ=.2, κ=0.5, η=0.5/0.2), rootprior=:poisson)
-        m1 = PhyloBDP(r1, tr, bound, cond=:none)
-        m2 = PhyloBDP(r2, tr, bound, cond=:none)
+    @testset "GL model, Poisson prior" begin
+        r1 = ConstantDLG(λ=.0,   μ=.2, κ=0.5)
+        r2 = ConstantDLG(λ=1e-7, μ=.2, κ=0.5)
+        p  = Poisson(0.5/0.2) 
+        m1 = PhyloBDP(r1, p, tr, bound, cond=:none)
+        m2 = PhyloBDP(r2, p, tr, bound, cond=:none)
         l1 = loglikelihood!(dag, m1)
         l2 = loglikelihood!(dag, m2)
         @test l1 ≈ l2 atol=1e-5
@@ -76,10 +94,11 @@ readtree = readnw ∘ readline
     @testset "Gain/no gain" begin
         for i=1:10
             λ, μ, κ = exp.(randn(3))
-            r1 = RatesModel(ConstantDLG(λ=λ, μ=μ, κ=0.0, η=1/1.5))
-            r2 = RatesModel(ConstantDLG(λ=λ, μ=μ, κ=κ, η=1/1.5))
-            m1 = PhyloBDP(r1, tr, bound)
-            m2 = PhyloBDP(r2, tr, bound)
+            r1 = ConstantDLG(λ=λ, μ=μ, κ=0.0)
+            r2 = ConstantDLG(λ=λ, μ=μ, κ=κ)
+            p  = ShiftedGeometric(1/1.5)
+            m1 = PhyloBDP(r1, p, tr, bound)
+            m2 = PhyloBDP(r2, p, tr, bound)
             l1 = loglikelihood!(mat, m1)
             l2 = loglikelihood!(dag, m1)
             # some weak testing here...
@@ -97,8 +116,9 @@ readtree = readnw ∘ readline
         X = [2 2 3 4 ; 2 2 3 4]
         s = ["A" "B" "C" "D"]
         dag, bound = CountDAG(X, s, tree)
-        r = RatesModel(ConstantDLG(λ=.2, μ=.3, κ=0.0, η=0.9))
-        m = PhyloBDP(r, tree, bound)
+        r = ConstantDLG(λ=.2, μ=.3, κ=0.0)
+        p = ShiftedGeometric(0.9)
+        m = PhyloBDP(r, p, tree, bound)
         ℓ = loglikelihood!(dag, m)
         @test isapprox(ℓ, -19.624930615416645, atol=1e-6)
         wgdgc = [-Inf, -13.032134, -10.290639, -8.968442, -8.413115,
@@ -117,24 +137,26 @@ readtree = readnw ∘ readline
         n = length(postwalk(tr))
         for i=1:10
             λ, μ, κ = randn(3)
-            rates1 = RatesModel(ConstantDLG(λ=exp(λ), μ=exp(μ), κ=exp(κ), η=1/1.5))
-            rates2 = RatesModel(DLG(λ=fill(λ, n), μ=fill(μ, n), κ=fill(κ, n), η=1/1.5))
-            rates2.params.μ[1] = -Inf  # verify first doesn't matter (root) 
-            rates2.params.λ[1] = -Inf  
-            rates2.params.κ[1] = -Inf  
-            model1 = PhyloBDP(rates1, tr, bound)
-            model2 = PhyloBDP(rates2, tr, bound)
-            @test logpdf(model1, dag) == logpdf(model2, dag)
+            r1 = ConstantDLG(λ=exp(λ), μ=exp(μ), κ=exp(κ))
+            r2 = DLG(λ=fill(λ, n), μ=fill(μ, n), κ=fill(κ, n))
+            p  = ShiftedGeometric(1/1.5)
+            r2.μ[1] = -Inf  # verify first doesn't matter (root) 
+            r2.λ[1] = -Inf  
+            r2.κ[1] = -Inf  
+            m1 = PhyloBDP(r1, p, tr, bound)
+            m2 = PhyloBDP(r2, p, tr, bound)
+            @test logpdf(m1, dag) == logpdf(m2, dag)
         end
     end
 
     @testset "MixtureModel" begin
         dag, bound = CountDAG(df, tr)
-        rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0.1, η=1/1.5))
-        model = PhyloBDP(rates, tr, bound)
-        mixmodel = MixtureModel([model, model])
+        r = ConstantDLG(λ=.1, μ=.1, κ=0.1)
+        p = ShiftedGeometric(1/1.5)
+        m = PhyloBDP(r, p, tr, bound)
+        mixmodel = MixtureModel([m, m])
         @test logpdf(mixmodel, dag) ≈ logpdf(mixmodel.components[1], dag)
-        mixmodel = MixtureModel([model(randn(4)) for i=1:4])
+        mixmodel = MixtureModel([m(rates=ConstantDLG(rand(3)...)) for i=1:4])
         l = logpdf(mixmodel, dag) 
         #@info "l" l
         @test -Inf < l < 0.
@@ -147,13 +169,13 @@ readtree = readnw ∘ readline
         wgdgc = CSV.read(joinpath(dd, "wgdgc-largest-l1.0-m1.0.csv"), DataFrame)
         
         @testset "Drosophila data, DAG vs. matrix vs. WGDgc" begin
-            rates = RatesModel(ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5), fixed=(:η,:κ))
+            r = ConstantDLG(λ=1., μ=1., κ=0.)
+            p = ShiftedGeometric(0.9)
             for i=1:10
                 sdf = df[i:i,:]
                 dag, bound = CountDAG(sdf, tr)
                 mat, bound = ProfileMatrix(sdf, tr)
-                model = PhyloBDP(rates, tr, bound)
-                m = model((λ=1., μ=1.))
+                m = PhyloBDP(r, p, tr, bound)
                 l1 = loglikelihood!(dag, m)
                 l2 = loglikelihood!(mat, m)
                 a, b, c = wgdgc[:,i][1:30], dag.parts[end][1:30], mat[1].ℓ[1][1:30]
@@ -164,23 +186,27 @@ readtree = readnw ∘ readline
 
         # intensive one, this was a source of numerical issues previously
         @testset "Gradients for large families" begin
+            function gradfun(x, data)
+                r = ConstantDLG(λ=x[1], μ=x[2], κ=zero(eltype(x)))
+                p = ShiftedGeometric(1/1.5)
+                m = PhyloBDP(r, p, tr, bound)
+                return logpdf(m, data)
+            end
             for i=1:20
                 res = map(1:5) do j
                     dag, bound = CountDAG(df[i:i,:], tr)
                     mat, bound = ProfileMatrix(df[i:i,:], tr)
-                    parms = ConstantDLG(λ=.1, μ=.1, κ=0., η=1/1.5)
-                    rates = RatesModel(parms, fixed=(:η,:κ))
-                    model = PhyloBDP(rates, tr, bound)
-                    x = round.(randn(2), digits=2)
-                    ∇ℓd = ForwardDiff.gradient(x->logpdf(model(x), dag), x)
-                    ∇ℓp = ForwardDiff.gradient(x->logpdf(model(x), mat), x)
+                    y = exp.(round.(randn(2), digits=2))
+                    ∇ℓd = ForwardDiff.gradient(x->gradfun(x, dag), y)
+                    ∇ℓp = ForwardDiff.gradient(x->gradfun(x, mat), y)
                     @test all(isfinite.(∇ℓd))
                     @test all(isfinite.(∇ℓp))
-                    (x, ∇ℓd, ∇ℓp)
+                    (y, ∇ℓd, ∇ℓp)
                 end
                 #@info "∇" res
             end
         end
     end
+
 end
 

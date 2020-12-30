@@ -17,12 +17,12 @@ end
     insertwgms(model, wgms::Dict)
 
 Insert a bunch of WGMs in a given PhyloBDP model, will return a new model
-object. `wgms` should be a dict with vectors of tuples, keeping for each 
-branch a vector with (t, k) tuples. This version does not modify anything
-in the template model.
+object. `wgms` should be a dict with vectors of tuples, keeping for each branch
+a vector with (t, k) tuples. This version does not modify anything in the
+template model.
 
-This is not particularly convenient for use in rjMCMC algorithms, where
-we want to efficiently add and remove single WGM events...
+This is not particularly convenient for use in rjMCMC algorithms, where we want
+to efficiently add and remove single WGM events...
 
 ```
 x = DeadBird.example_data()
