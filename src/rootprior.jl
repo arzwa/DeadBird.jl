@@ -24,12 +24,20 @@ z)^(-k)` for `|z| < 1`.
 """
 function marginalize end
 
-"""
+@doc raw"""
     marginal_extinctionp(d, logϵ)
 
 Compute the marginal log probability of having no observed descendants for a
 branching process starting off with `n` genes given by a probability
-distribution `d`  when the probability that a single gene goes extinct is `ϵ`
+distribution `d`  when the probability that a single gene goes extinct is `ϵ`.
+This is:
+
+```math
+\sum_{k=1}^\infty ϵ^k P\{X₀ = k\}
+```
+
+For most priors a closed form can be obtained by manipulating the sum so that
+it becomes a geometric series.
 """
 function marginal_extinctionp end
 
@@ -63,6 +71,8 @@ end
 
 """
     ShiftedGeometric
+
+Geometric distribution with domain [1, 2, ..., ∞).
 """
 struct ShiftedGeometric{T} <: RootPrior
     η::T
@@ -148,3 +158,9 @@ We can obtain the following:
     return ℓ
 end
 
+# marginalize extinction probability
+function marginal_extinctionp(p::ShiftedBetaGeometric, logϵ)
+    α, β = getαβ(p)
+    p = logϵ + log(p.η) - log1mexp(logϵ + log(β) - log(β + α + 1))
+    return p
+end

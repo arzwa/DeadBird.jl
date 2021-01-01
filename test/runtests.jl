@@ -33,13 +33,16 @@ readtree = readnw ∘ readline
     end
 
     @testset "Beta-geometric marginalization" begin
-        # for large ζ the BG distribution shoudl give indistinguishable results compared
+        # for large ζ the BG distribution should give indistinguishable results compared
         # to the Shifted Geometric.
         d1 = DeadBird.ShiftedBetaGeometric(0.9, 1e6)
         d2 = DeadBird.ShiftedGeometric(0.9)
         ℓvec = log.(rand(10) ./ 100)
         a = DeadBird.marginalize(d1, ℓvec, log(0.1))
         b = DeadBird.marginalize(d2, ℓvec, log(0.1))
+        @test a ≈ b atol=1e-4
+        a = DeadBird.marginal_extinctionp(d1, log(0.1))
+        b = DeadBird.marginal_extinctionp(d2, log(0.1))
         @test a ≈ b atol=1e-4
     end
     
