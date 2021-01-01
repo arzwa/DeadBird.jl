@@ -94,7 +94,7 @@ function simulate_profile(rng::AbstractRNG, m, p::ProfileSim)
     profile = zeros(Int64, length(idx)+2)
     while i < 0 || !cond(profile)
         full = simwalk!(rng, profile, m, root(m), idx)
-        !(cond(profile)) && all(profile .== 0) && (j += 1)
+        all(profile .== 0) && (j += 1)
         i += 1
     end
     profile[end-1] = i
@@ -106,7 +106,7 @@ function simwalk!(rng::AbstractRNG, profile, m, n, idx, X=nothing)
     # simulate current edge
     θ  = getθ(m.rates, n)
     X′ = isnothing(X) ?  # root 
-        randroot(rng, m.rates.rootprior, θ) : 
+        rand(rng, m.rootp) : 
         randedge(rng, X, θ, distance(n)) 
     if isleaf(n) 
         profile[idx[name(n)]] = X′
@@ -115,10 +115,6 @@ function simwalk!(rng::AbstractRNG, profile, m, n, idx, X=nothing)
     next = map(c->simwalk!(rng, profile, m, c, idx, X′), children(n))
     vcat(X′, next...)
 end
-
-# only for shifted geometric and geometric priors
-randroot(rng::AbstractRNG, prior::Symbol, θ) = 
-    rand(rng, Geometric(θ.η)) + (prior == :shifted ? 1 : 0)
 
 function randedge(rng::AbstractRNG, X, θ, t)
     @unpack λ, μ, κ = θ

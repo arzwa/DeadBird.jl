@@ -32,6 +32,24 @@ readtree = readnw ∘ readline
         end
     end
 
+    @testset "Simulation and Monte Carlo check of condition factors" begin
+        x = [0.2, 0.8, 0.0, 0.9, 3.]
+        r = ConstantDLG(x[1:3]...)
+        p = [ShiftedGeometric(x[4]), ShiftedBetaGeometric(x[4], x[5])]
+        for prior in p 
+            m = PhyloBDP(r, prior, tr, bound, cond=:none)
+            X = simulate(m, 100000)
+            p1 = exp(DeadBird.marginal_extinctionp(prior, DeadBird.getϵ(getroot(m), 2)))
+            p2 = length(filter(x->all(x->x==0, Array(x)[1:end-2]), eachrow(X)))/nrow(X)
+            @test p1 ≈ p2 atol=0.01
+            m_ = PhyloBDP(r, prior, tr, bound)
+            p3 = exp(DeadBird.conditionfactor(m_))
+            cond = DeadBird.getcondition(m_, DeadBird.getleafindex(m_))
+            p4 = nrow(filter(cond, X)) / nrow(X)
+            @test p3 ≈ p4 atol=0.01
+        end
+    end
+
     @testset "Beta-geometric marginalization" begin
         # for large ζ the BG distribution should give indistinguishable results compared
         # to the Shifted Geometric.
