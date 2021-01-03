@@ -7,6 +7,7 @@
 
 # Load the required packages
 using DeadBird, Distributions, Turing, CSV, DataFrames, NewickTree, Optim
+using Random; Random.seed!(671);
 
 # Load the data
 datadir = joinpath(@__DIR__, "../../example/drosophila")

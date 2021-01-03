@@ -194,7 +194,7 @@ uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
 
 [[DeadBird]]
 deps = ["BenchmarkTools", "DataFrames", "Distributions", "LightGraphs", "LinearAlgebra", "NewickTree", "Parameters", "Printf", "Random", "RecipesBase", "SpecialFunctions", "StatsBase", "StatsFuns", "ThreadTools", "TransformVariables"]
-path = "/home/arzwa/dev/DeadBird/"
+path = "/home/arzwa/dev/DeadBird"
 uuid = "a6db34b6-ea8f-496d-a49f-6ef7ed1dec48"
 version = "0.1.0"
 
@@ -475,7 +475,7 @@ version = "1.0.0"
 deps = ["AbstractTrees", "Test"]
 path = "../../NewickTree"
 uuid = "b0a14db8-6308-4ebc-8917-f72cd81f5094"
-version = "0.2.1"
+version = "0.2.2"
 
 [[OpenSpecFun_jll]]
 deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "Pkg"]

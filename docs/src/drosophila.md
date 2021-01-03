@@ -10,6 +10,8 @@ Load the required packages
 
 ```@example drosophila
 using DeadBird, Distributions, Turing, CSV, DataFrames, NewickTree, Optim
+using Random; Random.seed!(671);
+nothing #hide
 ```
 
 Load the data
