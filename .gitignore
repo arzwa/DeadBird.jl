@@ -1,4 +1,6 @@
 /example/_comp/
+/test/simulation.jl
+/test/turing.jl
 
 # Created by https://www.toptal.com/developers/gitignore/api/julia,vim,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=julia,vim,linux

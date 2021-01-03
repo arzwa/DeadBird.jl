@@ -1,10 +1,4 @@
-# Arthur Zwaenepoel (2020)
-# Consider the following design for arbitrary multiplication nodes:
-# instead of relying on a string/symbol/type to identify WGDs, we just
-# associate with each node a multiplication level `k`, if `k == 1` we have a
-# speciation node (bi/multi-furcating)  or `wgdafter` node (non- bifurcating
-# case). For `k > 1` we have a multiplication node...
-
+# Model nodes for the PGM
 # hate the name, but'it's barely used (the name that is)
 struct NodeProbs{T}
     name::String  # leaf name

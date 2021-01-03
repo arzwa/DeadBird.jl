@@ -24,7 +24,9 @@ template model.
 This is not particularly convenient for use in rjMCMC algorithms, where we want
 to efficiently add and remove single WGM events...
 
-```
+# Example
+
+```julia
 x = DeadBird.example_data()
 m = PhyloBDP(RatesModel(ConstantDLGWGD(q=ones(9))), x.tr, 5)
 insertwgms(m, Dict(3=>[(0.1, 2)], 2=>[(0.3, 4)]))

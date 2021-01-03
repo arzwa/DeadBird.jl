@@ -16,6 +16,12 @@ function Base.NamedTuple(m::M) where M<:RatesModel
     return (; (k => getfield(m, k) for k in propertynames(m))...)
 end
 
+"""
+    newmodel(m::M, θ) where M<:RatesModel
+
+Construct a new model of type `M` by taking the parameters of `m` and
+parameters defined in the named tuple `θ`, the latter overriding the former.
+"""
 newmodel(m::M, θ) where M<:RatesModel = M(merge(NamedTuple(m), θ)...)
 
 """

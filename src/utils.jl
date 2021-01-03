@@ -55,7 +55,7 @@ median of each class as representative rate, and rescales the resulting vector
 
 !!! note
     Better would be to have the mean value of each class as representative
-    I guess, but the median is much more striaghtforward to obtain given
+    I guess, but the median is much more straightforward to obtain given
     that we have quantile functions available.
 
 # Example

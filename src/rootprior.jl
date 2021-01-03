@@ -41,7 +41,6 @@ it becomes a geometric series.
 """
 function marginal_extinctionp end
 
-
 # marginalize over geometric using closed form.
 @inline function marginalize(p::Geometric, ℓvec, logϵ)
     ℓ = -Inf
@@ -55,7 +54,6 @@ function marginal_extinctionp end
     return ℓ
 end
 
-
 # marginalize over Poisson
 @inline function marginalize(p::Poisson, ℓvec, logϵ)
     ℓ = -Inf
@@ -67,7 +65,6 @@ end
     end
     return ℓ
 end
-
 
 """
     ShiftedGeometric

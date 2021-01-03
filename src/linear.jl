@@ -1,5 +1,5 @@
 # Likelihood and other methods specific to the linear model
-# Actually the matter is probably more about the branching property than about
+# Actually the matter is probably about the branching property than about
 # linearity, e.g. rates that grow quadratic with the population size might also
 # admit a Csuros-Miklos like algorithm. At any rate, only methods for the
 # linear BDP are implemented here.
