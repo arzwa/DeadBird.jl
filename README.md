@@ -1,3 +1,4 @@
+![](https://img.shields.io/badge/lifecycle-experimental-orange.svg)
 
 **Warning:** This is rapidly evolving research software, and still in a largely
 experimental part of its life cycle. The methods should be reliable (see the
