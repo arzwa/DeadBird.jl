@@ -25,5 +25,5 @@ makedocs(
              "Examples" => output,
              "API"      => "api.md"],)
 
-deploydocs(repo = "github.com/arzwa/DeadBird.jl.git")
+deploydocs(repo = "github.com/arzwa/DeadBird.jl.git", devbranch="main")
 

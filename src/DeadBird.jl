@@ -6,7 +6,6 @@ using Distributions
 using LightGraphs
 using StatsBase
 using StatsFuns
-using TransformVariables
 using DataFrames
 using ThreadTools
 using RecipesBase
