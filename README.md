@@ -1,3 +1,4 @@
+![build](https://github.com/arzwa/DeadBird.jl/workflows/build/badge.svg)
 [![](https://img.shields.io/badge/docs-master-blue.svg)](https://arzwa.github.io/DeadBird.jl/dev/)
 ![](https://img.shields.io/badge/lifecycle-experimental-orange.svg)
 
@@ -7,9 +8,9 @@ tests), but the API may change. Contributions welcome, feel free to reach out.
 
 # DeadBird
 
-`DeadBird.jl` is a julia package for modeling comparative genomic count data
+DeadBird.jl is a julia package for modeling comparative genomic count data
 using **phylogenetic birth-death processes**, most commonly gene families.
-`DeadBird.jl` uses the (exact) algorithm of Csuros & Miklos (2009) for
+DeadBird.jl uses the (exact) algorithm of Csuros & Miklos (2009) for
 computing the conditional survival likelihoods. 
 
 Some things `DeadBird.jl` currently allows to do:
@@ -26,10 +27,10 @@ Some things `DeadBird.jl` currently allows to do:
 - Statistically test for whole-genome multiplications along branches of the
   species tree (sensu Rabier et al. 2014, Zwaenepoel & Van de Peer 2019).
 
-`DeadBird` is developed by Arthur Zwaenepoel (member of the Van de Peer group
-at VIB-UGent center for plant systems biology). If you use `DeadBird` please
+DeadBird.jl is developed by Arthur Zwaenepoel (member of the Van de Peer group
+at VIB-UGent center for plant systems biology). If you use DeadBird.jl please
 cite the following article (which describes a previous version on which
-this package is based)
+this package is based):
 
 ```
 Zwaenepoel, A., and Y. Van de Peer. 
@@ -37,7 +38,7 @@ Zwaenepoel, A., and Y. Van de Peer.
 Molecular biology and evolution (2020).
 ```
 
-and consider citing
+and the article describing the likelihood algorithm for phylogenetic BDPs:
 
 ```
 Csűrös, Miklós, and István Miklós. 
