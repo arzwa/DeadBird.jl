@@ -10,6 +10,8 @@ struct NodeData{I}
     bound::Int
 end
 
+NodeData(s, c, b) = NodeData(s, promote(c, b)...)
+
 """
     CountDAG(df::DataFrame, tree::Node)
 
