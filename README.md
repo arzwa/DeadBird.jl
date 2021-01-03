@@ -1,4 +1,4 @@
-![](https://img.shields.io/badge/docs-master-blue.svg)](https://arzwa.github.io/DeadBird.jl/dev/)
+![](https://img.shields.io/badge/docs-master-blue.svg)(https://arzwa.github.io/DeadBird.jl/dev/)
 ![](https://img.shields.io/badge/lifecycle-experimental-orange.svg)
 
 **Warning:** This is rapidly evolving research software, and still in a largely
