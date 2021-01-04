@@ -68,11 +68,11 @@ quantile(chain; q=[0.025, 0.975])
 # `ShiftedBetaGeometric`, ...) to specify complicated models. A not so 
 # complicated example would be the following. First we filter the data to only
 # allow for non-extinct families:
-nonextinct = filter(x->all(Array(x) .> 0), data)
+nonextinct = filter(x->all(Array(x) .> 0), data);
 
 # We will model the excess number of genes, i.e. the number of extra
 # (duplicated) genes *per* family, instead of the total number of genes. 
-excessgenes = nonextinct .- 1
+excessgenes = nonextinct .- 1;
 
 # Again we construct a DAG object
 dag, bound = CountDAG(excessgenes, tree)
@@ -84,7 +84,7 @@ dag, bound = CountDAG(excessgenes, tree)
 # corresponds to a single copy family), and where *duplicated genes* get lost
 # at rate `μ`. We assume `λ < μ`, in which case there is a geometric stationary
 # distribution with mean `1 - λ/μ` for the excess number of genes in a family.
-bound01(η) = η < zero(η) ? zero(η) + 1e-16 : η > one(η) ? one(η) - 1e-16 : η
+bound01(η) = η <= zero(η) ? zero(η) + 1e-16 : η >= one(η) ? one(η) - 1e-16 : η
 
 @model nonextinctmodel(dag, bound, tree) = begin
     μ ~ Turing.FlatPos(0.)
