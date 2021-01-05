@@ -44,7 +44,7 @@ end
 model = singlerate(dag, bound, tree, rootprior)
 @time mleresult = optimize(model, MLE())
 
-# For the complete data set, this takes a bot 10 seconds. 
+# For the complete data set, this takes about 10 seconds. 
 
 # It is straightforward to adapt the model definition to allow for different
 # duplication and loss rates, non-zero gain rates (`κ`) or different root

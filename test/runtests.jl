@@ -32,6 +32,7 @@ readtree = readnw ∘ readline
         end
     end
 
+    # this is only a rough check
     @testset "Simulation and Monte Carlo check of condition factors" begin
         x = [0.2, 0.8, 0.0, 0.9, 3.]
         r = ConstantDLG(x[1:3]...)
@@ -50,18 +51,25 @@ readtree = readnw ∘ readline
         end
     end
 
-    @testset "Beta-geometric marginalization" begin
+    @testset "Shifted Beta-geometric marginalization" begin
         # for large ζ the BG distribution should give indistinguishable results compared
         # to the Shifted Geometric.
-        d1 = DeadBird.ShiftedBetaGeometric(0.9, 1e6)
-        d2 = DeadBird.ShiftedGeometric(0.9)
-        ℓvec = log.(rand(10) ./ 100)
-        a = DeadBird.marginalize(d1, ℓvec, log(0.1))
-        b = DeadBird.marginalize(d2, ℓvec, log(0.1))
-        @test a ≈ b atol=1e-4
-        a = DeadBird.marginal_extinctionp(d1, log(0.1))
-        b = DeadBird.marginal_extinctionp(d2, log(0.1))
-        @test a ≈ b atol=1e-4
+        ζ = 1e6
+        for η in 0.5:0.1:0.9
+            bg = (DeadBird.ShiftedBetaGeometric(η, ζ), DeadBird.BetaGeometric(η, ζ))
+            gg = (DeadBird.ShiftedGeometric(η), DeadBird.Geometric(η))
+            ℓvec = log.(rand(10) ./ 100)
+            for (i, (d1, d2)) in enumerate(zip(bg, gg))
+                a = DeadBird.marginalize(d1, ℓvec, log(0.1))
+                b = DeadBird.marginalize(d2, ℓvec, log(0.1))
+                @test a ≈ b atol=1e-4
+                if i == 1  # marginal extinctionp not very sensible for geometric
+                    a = DeadBird.marginal_extinctionp(d1, log(0.1))
+                    b = DeadBird.marginal_extinctionp(d2, log(0.1))
+                    @test a ≈ b atol=1e-4
+                end
+            end
+        end
     end
     
     @testset "CountDAG and Profile, default linear BDP" begin

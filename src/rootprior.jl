@@ -36,7 +36,7 @@ This is:
 \sum_{k=1}^\infty ϵ^k P\{X₀ = k\}
 ```
 
-For most priors a closed form can be obtained by manipulating the sum so that
+For many priors a closed form can be obtained by manipulating the sum so that
 it becomes a geometric series.
 """
 function marginal_extinctionp end
@@ -129,35 +129,100 @@ end
 
 Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric, n::Int) = map(rand(rng, d), 1:n)
 
-@doc raw"""
-    marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ)
-
-If we do the series, and make use of the fact that `B(x,y+1) = B(x,y)*y/(x+y)`
-We can obtain the following:
-
-```math
-\ell = \sum_{n=1}^b \ell[n] 
-    \frac{\mathrm{B}(\alpha + 1, \beta + n + 1)}{\mathrm{B}(\alpha, \beta)}
-    \frac{(1-\epsilon)^n}{(1-\epsilon \frac{\beta + n-1}{\alpha + \beta + n})^{n+1}}
-```
 """
-@inline function marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ)
+    marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ, imax=100)
+
+There seems to be no closed form for this, but we can devise a recursion and
+obtain a near-exact solution efficiently.
+"""
+@inline function marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ, imax=20)
     α, β = getαβ(p)
     a = log1mexp(logϵ)
-    b = logbeta(α + 1, β) + a - logbeta(α, β)  # base term 
-    c = log(β) - log(α + β + 1) + a
+    A = log(p.η)  # A10 term
     ℓ = -Inf
-    for n in 2:length(ℓvec)
-        f = b - n*log(1 - exp(logϵ) * (β + n - 2) / (α + β + n - 1))
-        ℓ = logaddexp(ℓ, ℓvec[n] + f)
-        b += c  # update term with Beta function terms
+    for k in 2:length(ℓvec)
+        f = _innerseries_shiftedbg(A, logϵ, k - 1, α, β, imax)
+        ℓ = logaddexp(ℓ, ℓvec[k] + (k - 1) * a + f)
+        # recursion on k, update to get the *next* term
+        A += log(β + k - 2) - log(α + β + k - 1) 
     end
     return ℓ
 end
 
-# marginalize extinction probability
-function marginal_extinctionp(p::ShiftedBetaGeometric, logϵ)
+# Inner series for marginalizing over a shifted beta-geometric distribution
+# This uses a recursion on `i` to compute the terms in the partial sum
+function _innerseries_shiftedbg(A, logϵ, k, α, β, imax)
+    S = A  # partial sum
+    for i=1:imax
+        a = logϵ + log(k + i) + log(β + k + i - 2)  # numerator
+        b = log(i) + log(α + β + k + i - 1)  # denominator
+        A = A + a - b  # A_{k,i} term
+        S = logaddexp(S, A)  # add term to series
+    end
+    return S 
+end
+
+# marginalize extinction probability (no closed form AFAIK, but efficient recursion)
+function marginal_extinctionp(p::ShiftedBetaGeometric, logϵ, kmax=20)
     α, β = getαβ(p)
-    p = logϵ + log(p.η) - log1mexp(logϵ + log(β) - log(β + α + 1))
+    A = log(p.η) + logϵ  # first term
+    p = A  # partial sum
+    for k=2:kmax
+        A += logϵ + log(β + k - 2) - log(α + β + k - 1)  # next term Ak
+        p = logaddexp(p, A)  # add term to series
+    end
     return p
 end
+
+"""
+    BetaGeometric(η, ζ)
+"""
+struct BetaGeometric{T} <: RootPrior
+    η::T
+    ζ::T
+end
+
+getαβ(d::BetaGeometric) = d.η * (d.ζ + 1), (1 - d.η) * (d.ζ + 1)  
+
+function Base.rand(rng::AbstractRNG, d::BetaGeometric) 
+    p = rand(Beta(getαβ(d)...))
+    p = p <= zero(p) ? 1e-16 : p >= one(p) ? 1-1e-16 : p
+    return rand(Geometric(p))
+end
+
+Base.rand(rng::AbstractRNG, d::BetaGeometric, n::Int) = map(rand(rng, d), 1:n)
+
+"""
+    marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ, imax=100)
+
+There seems to be no closed form for this, but we can devise a recursion,
+analogous to the ShiftedBetaGeometric case. This could probably share code, but
+I'll have it separate for now.
+"""
+@inline function marginalize(p::BetaGeometric, ℓvec, logϵ, imax=20)
+    α, β = getαβ(p)
+    a = log1mexp(logϵ)
+    A = log(p.η)  # base term 
+    ℓ = -Inf
+    for k in 1:length(ℓvec)
+        f = _innerseries_bg(A, logϵ, k - 1, α, β, imax)
+        ℓ = logaddexp(ℓ, ℓvec[k] + (k - 1) * a + f)
+        # recursion on k, update to get the *next* term
+        A += log(β + k - 1) - log(α + β + k) 
+    end
+    return ℓ
+end
+
+# This could probably be combined with _innerseries_shiftedbg but perhaps
+# clearer to keep separate
+function _innerseries_bg(A, logϵ, k, α, β, imax)
+    S = A  # partial sum
+    for i=1:imax
+        a = logϵ + log(k + i) + log(β + k + i - 1)  # numerator
+        b = log(i) + log(α + β + k + i)  # denominator
+        A = A + a - b  # A_{k,i} term
+        S = logaddexp(S, A)  # add term to series
+    end
+    return S 
+end
+
