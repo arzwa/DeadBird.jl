@@ -131,6 +131,9 @@ function Distributions.logpdf(
     loglikelihood!(copydag(x, T), m)
 end
 
+function to_matrix(dag::CountDAG) 
+end
+
 # ## Notes
 # We need a data structure that summarizes the entire data set. Or find any
 # other way to arrange the computations more economically. Any unique subtree

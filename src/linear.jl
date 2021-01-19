@@ -155,15 +155,15 @@ function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
 end
 
 """
-    wstar!(w::Matrix, t, θ, ϵ)
+    wstar!(W::Matrix, t, θ, ϵ)
 
 Compute the transition probabilities for the conditional survival process
 recursively (not implemented using recursion though!). Note that the resulting
 transition matrix is *not* a stochastic matrix of some Markov chain.
 """
-function wstar!(w::AbstractMatrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
+function wstar!(W::AbstractMatrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
     @unpack λ, μ, κ = θ
-    l = size(w, 1) - 1
+    l = size(W, 1) - 1
     ϕ , ψ  = getϕψ(t, λ, μ)        # p , q  in Csuros
     ϕ′, ψ′ = getϕψ′(ϕ, ψ, exp(ϵ))  # p', q' in Csuros
     a = 1. - ϕ′
@@ -176,25 +176,25 @@ function wstar!(w::AbstractMatrix{T}, t, θ, ϵ) where T  # compute w* (Csuros M
         # if λ = κ this is a geometric distribution
         # if λ is so small as to dwarfed by κ this is a Poisson distribution
         # we use the gain-loss model in the latter case
-        w[1,:] = logpdf.(NegativeBinomial(r, b), 0:l)
+        W[1,:] = logpdf.(NegativeBinomial(r, b), 0:l)
     elseif r >= 1e10  
         # gain+loss (ignore duplication if λ ≈ 0), Poisson contribution from gain
         r′ = κ * ϕ * (1. - exp(ϵ)) / μ  # recall ϕ = (1-e^(-μt))
-        w[1,:] = logpdf.(Poisson(r′), 0:l)     
+        W[1,:] = logpdf.(Poisson(r′), 0:l)     
     else
         # no gain (κ = 0.)
-        w[1,1] = zero(T)
+        W[1,1] = zero(T)
     end
     for m=1:l, n=1:m   # should we go from 1 to m?
-        w[n+1, m+1] = logaddexp(d + w[n+1, m], c + w[n, m])
+        W[n+1, m+1] = logaddexp(d + W[n+1, m], c + W[n, m])
     end
 end
 
 # correct for WGDs at least
-function wstar_wgm!(w, k, θ, logϵ)
+function wstar_wgm!(W, k, θ, logϵ)
     @unpack λ, μ, q = θ
-    l = size(w, 1) - 1
-    w[1,1] = zero(λ)  # gain is not involved at wgm nodes 0->0 w.p. 1
+    l = size(W, 1) - 1
+    W[1,1] = zero(λ)  # gain is not involved at wgm nodes 0->0 w.p. 1
     ϵ = exp(logϵ)
     for j=1:k
         p = zero(λ)
@@ -202,13 +202,51 @@ function wstar_wgm!(w, k, θ, logϵ)
             p_ = (1. - ϵ)^j * ϵ^(n-j) * q^(n-1) * (1. - q)^(k-n)
             p += binomial(n, j)*binomial(k-1, n-1)*p_  # couldn't obtain closed form
         end
-        w[2, j+1] = log(p)
+        W[2, j+1] = log(p)
     end
     for i=2:l, j=i:(min(k*i,l))
-        w[i+1, j+1] = -Inf  # for safety 
+        W[i+1, j+1] = -Inf  # for safety 
         # for a `k`-plication, we have min(j-1, k) terms to some to get pᵢⱼ
         for n=1:min(j-i+1,k)
-            w[i+1, j+1] = logaddexp(w[i+1, j+1], w[2, n+1] + w[i, j-n+1])
+            W[i+1, j+1] = logaddexp(W[i+1, j+1], W[2, n+1] + W[i, j-n+1])
+        end
+    end
+end
+
+"""
+    setw!(W, θ, t)
+
+Compute transition probability matrix for the ordinary (not conditional on
+survival that is) birth-death process. Using the recursive formulation of
+Csuros & Miklos.
+"""
+function setw!(W::AbstractMatrix{T}, θ, t) where T
+    @unpack λ, μ, κ = θ
+    l = size(W, 1) - 1
+    ϕ, ψ = getϕψ(t, λ, μ)  # p , q  in Csuros
+    lϕ = log(ϕ)
+    lψ = log(ψ)
+    a = 1. - ϕ
+    b = 1. - ψ
+    c = log(a) + log(b) 
+    d = log(1 - ϕ - ψ)
+    r = κ/λ
+    if (zero(r) < r < 1e10) && (b > zero(b))
+        # dup+gain+loss 
+        W[1,:] = logpdf.(NegativeBinomial(r, b), 0:l)
+    elseif r >= 1e10  
+        # gain+loss (ignore duplication if λ ≈ 0), Poisson contribution from gain
+        W[1,:] = logpdf.(Poisson(r), 0:l)     
+    else
+        # no gain (κ = 0.)
+        W[1,1] = zero(T)
+    end
+    for n=1:l
+        W[n+1, 1] = lϕ + W[n, 1]
+        W[n+1, 2] = logaddexp(lϕ + W[n, 2], c + W[n, 1])
+        for m=2:l
+            x = logaddexp(lψ + W[n+1, m], d + W[n, m])
+            W[n+1, m+1] = logaddexp(x, lϕ + W[n, m+1])
         end
     end
 end

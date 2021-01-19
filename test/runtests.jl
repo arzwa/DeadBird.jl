@@ -3,7 +3,6 @@ using LightGraphs, NewickTree, Random, Distributions, CSV, DataFrames, ForwardDi
 using DeadBird: loglikelihood!
 Random.seed!(624)
 
-# XXX do we still need NaN-safe mode in ForwardDiff?
 const datadir = joinpath(@__DIR__, "../example")
 readtree = readnw ∘ readline
 
@@ -235,6 +234,9 @@ readtree = readnw ∘ readline
                 #@info "∇" res
             end
         end
+    end
+
+    @testset "Ancestral states" begin
     end
 
 end

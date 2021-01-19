@@ -127,6 +127,7 @@ Base.length(m::PhyloBDP) = length(m.order)
 
 root(m::PhyloBDP) = m.order[end]
 NewickTree.getroot(m::PhyloBDP) = root(m)
+rootprior(m::PhyloBDP) = m.rootp
 
 struct ModelArray{M} <: DiscreteMultivariateDistribution
     models::Vector{M}

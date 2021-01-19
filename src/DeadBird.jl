@@ -24,6 +24,7 @@ include("linear.jl")
 include("dlsim.jl")
 include("ppsim.jl")
 include("utils.jl")
+include("ancestral.jl")
 
 """
     example_data()
