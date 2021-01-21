@@ -7,13 +7,13 @@ on:
     pull_request:
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v2
-    - name: Setup tmate session
-      uses: mxschmitt/action-tmate@v3
-      timeout-minutes: 30
+ #debug:
+    #runs-on: ubuntu-latest
+    #steps:
+    #- uses: actions/checkout@v2
+    #- name: Setup tmate session
+    #  uses: mxschmitt/action-tmate@v3
+    #  timeout-minutes: 30
   test:
     runs-on: ${{ matrix.os }}
     continue-on-error: ${{ matrix.version == 'nightly' }}
@@ -33,7 +33,10 @@ jobs:
           version: ${{ matrix.version }}
           arch: ${{ matrix.arch }}
       - uses: julia-actions/julia-buildpkg@latest
-      - uses: julia-actions/julia-runtest@latest
+        #- uses: julia-actions/julia-runtest@latest
+      - run: |
+          julia --color=yes --check-bounds=yes --inline=yes --project=@. --depwarn=yes -e '
+            using Pkg; Pkg.test(coverage=false)'
   docs: 
     name: Documentation
     runs-on: ubuntu-latest
