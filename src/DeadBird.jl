@@ -12,6 +12,8 @@ using RecipesBase
 using Printf
 using Random
 using SpecialFunctions
+using Bijectors
+using LinearAlgebra
 import StatsBase: loglikelihood
 
 include("rmodels.jl")
@@ -25,6 +27,7 @@ include("dlsim.jl")
 include("ppsim.jl")
 include("utils.jl")
 include("ancestral.jl")
+include("clocks.jl")
 
 """
     example_data()
@@ -55,7 +58,7 @@ end
 
 export CountDAG, ProfileMatrix, Profile
 export ConstantDLG, DLG, PhyloBDP, ModelArray
-export ShiftedGeometric, ShiftedBetaGeometric
+export ShiftedGeometric, ShiftedBetaGeometric, BetaGeometric
 export simulate
 
 end # module

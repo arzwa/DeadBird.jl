@@ -12,8 +12,8 @@ struct PPSim{T,V}
     n::Int
 end
 
-Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N = $(x.N), "* 
-                                    "n = $(x.n))\n$(printfdf(table(x)))")
+Base.show(io::IO, x::PPSim) = 
+    write(io, "PP simulations (N=$(x.N), n=$(x.n))\n$(table(x, abbr=false))")
 
 function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=true)
     sp = sp == :all ? collect(keys(x.data)) : sp
@@ -46,17 +46,6 @@ end
 _getmean(pdf::Vector, xmin) = sum([(i-1+xmin)*x for (i,x) in enumerate(pdf)])
 _getmean(pdf::Matrix, xmin) = _getmean(vec(mapslices(mean, pdf, dims=2)), xmin)
 
-function printfdf(df)
-    numcols = names(df)[eltype.(eltypes(df)) .== Float64]
-    trfun = x->typeof(x) == Float64 ? (@sprintf "%.3f" x) : 
-        "("*join([(@sprintf "%.3f" y) for y in x], ", ")*")"
-    ddf = deepcopy(df)
-    for col in numcols
-        ddf = DataFrames.transform(ddf, col => ByRow(trfun) => col)
-    end
-    ddf
-end
-
 """
     simulate(mfun::Function, data::DataFrame, chain, N)
 
@@ -87,7 +76,7 @@ function simulate_ma(mfun::Function, data::DataFrame, chain)
 end
 
 function leafpmf(df) 
-    Dict(k=>_proportions(v) for (k, v) in eachcol(df, true))
+    Dict(k=>_proportions(v) for (k, v) in zip(names(df), eachcol(df)))
 end
 
 _proportions(x) = proportions(x, 0:maximum(x))

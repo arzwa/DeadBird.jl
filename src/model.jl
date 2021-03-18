@@ -46,7 +46,7 @@ isawgm(n) = iswgm(n) || iswgm(parent(n))
 # the retention rate should be obtained from element id(n) in the q-vector of
 # the rates model. This entails the q-vector is not as compact as it should,
 # but this is very convenient.
-wgmid(n) = id(n) 
+wgmid(n) = iswgmafter(n) ? id(parent(n)) : id(n) 
 
 """
     PhyloBDP(ratesmodel, tree, bound)

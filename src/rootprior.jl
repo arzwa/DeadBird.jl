@@ -117,17 +117,24 @@ p_k = \frac{\mathrm{B}(\alpha + 1, \beta + k - 1)}{\mathrm{B}(\alpha, \beta)}
 struct ShiftedBetaGeometric{T} <: RootPrior
     η::T
     ζ::T
+    α::T
+    β::T
+    ShiftedBetaGeometric(η::T, ζ::T) where T = new{T}(η, ζ, getαβ(η, ζ)...)
 end
 
-getαβ(d::ShiftedBetaGeometric) = d.η * (d.ζ + 1), (1 - d.η) * (d.ζ + 1)  
+ShiftedBetaGeometric(η, ζ) = ShiftedBetaGeometric(promote(η, ζ)...)
+
+getαβ(η, ζ) = (α=η * (ζ + 1), β=(1 - η) * (ζ + 1))
+logp(α, β, k) = logbeta(α + 1, β + k) - logbeta(α, β)
 
 function Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric) 
-    p = rand(Beta(getαβ(d)...))
+    p = rand(Beta(d.α, d.β))
     p = p <= zero(p) ? 1e-16 : p >= one(p) ? 1-1e-16 : p
     return rand(Geometric(p)) + 1
 end
 
 Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric, n::Int) = map(rand(rng, d), 1:n)
+Distributions.logpdf(d::ShiftedBetaGeometric, k) = logp(d.α, d.β, k - 1)
 
 """
     marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ, imax=100)
@@ -136,9 +143,9 @@ There seems to be no closed form for this, but we can devise a recursion and
 obtain a near-exact solution efficiently.
 """
 @inline function marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ, imax=20)
-    α, β = getαβ(p)
+    @unpack η, α, β = p
     a = log1mexp(logϵ)
-    A = log(p.η)  # A10 term
+    A = log(η)  # A10 term
     ℓ = -Inf
     for k in 2:length(ℓvec)
         f = _innerseries_shiftedbg(A, logϵ, k - 1, α, β, imax)
@@ -164,8 +171,8 @@ end
 
 # marginalize extinction probability (no closed form AFAIK, but efficient recursion)
 function marginal_extinctionp(p::ShiftedBetaGeometric, logϵ, kmax=20)
-    α, β = getαβ(p)
-    A = log(p.η) + logϵ  # first term
+    @unpack η, α, β = p
+    A = log(η) + logϵ  # first term
     p = A  # partial sum
     for k=2:kmax
         A += logϵ + log(β + k - 2) - log(α + β + k - 1)  # next term Ak
@@ -180,17 +187,36 @@ end
 struct BetaGeometric{T} <: RootPrior
     η::T
     ζ::T
+    α::T
+    β::T
+    BetaGeometric(η::T, ζ::T) where T = new{T}(η, ζ, getαβ(η, ζ)...)
 end
 
-getαβ(d::BetaGeometric) = d.η * (d.ζ + 1), (1 - d.η) * (d.ζ + 1)  
+BetaGeometric(η, ζ) = BetaGeometric(promote(η, ζ)...)
 
 function Base.rand(rng::AbstractRNG, d::BetaGeometric) 
-    p = rand(Beta(getαβ(d)...))
+    p = rand(Beta(d.α, d.β))
     p = p <= zero(p) ? 1e-16 : p >= one(p) ? 1-1e-16 : p
     return rand(Geometric(p))
 end
 
 Base.rand(rng::AbstractRNG, d::BetaGeometric, n::Int) = map(rand(rng, d), 1:n)
+Distributions.logpdf(d::BetaGeometric, k) = logp(d.α, d.β, k)
+
+"""
+   loglikelihood(d::BetaGeometric, ks::Vector{Int})
+
+Loglikelihod for a vector of counts `ks`, i.e. `[x1, x2, x3, ...]` where `x1`
+is the number of times k=1 is observed in the data, `x2` the number of times
+k=2 is observed, etc.
+"""
+function Distributions.loglikelihood(d::BetaGeometric, ks::Vector{Int})
+    logp = 0.
+    for (k, count) in enumerate(ks)
+        logp += count * logpdf(d, k-1)
+    end
+    return logp
+end
 
 """
     marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ, imax=100)
@@ -200,9 +226,9 @@ analogous to the ShiftedBetaGeometric case. This could probably share code, but
 I'll have it separate for now.
 """
 @inline function marginalize(p::BetaGeometric, ℓvec, logϵ, imax=20)
-    α, β = getαβ(p)
+    @unpack η, α, β = p
     a = log1mexp(logϵ)
-    A = log(p.η)  # base term 
+    A = log(η)  # base term 
     ℓ = -Inf
     for k in 1:length(ℓvec)
         f = _innerseries_bg(A, logϵ, k - 1, α, β, imax)

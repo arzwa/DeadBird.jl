@@ -1,4 +1,4 @@
-# This is fine and quite clean I guess
+# This is fine and reasonably clean I guess
 function _insertwgm!(node::ModelNode{T,I}, n, k, t) where {T,I}
     # initially: u -l→ v 
     # the goal:  u -(l-t)→ w -0→ x -t→ v
@@ -10,7 +10,7 @@ function _insertwgm!(node::ModelNode{T,I}, n, k, t) where {T,I}
     w = Node(I(n), NodeProbs("", k, l-t, m, T), u)
     x = Node(I(n+1), NodeProbs("", 1, 0., m, T), w)
     v = Node(id(node), NodeProbs(name(node), getk(node), t, m, T), x)
-    return [w, x, v]
+    return [v, x, w] 
 end
 
 """
@@ -32,32 +32,43 @@ m = PhyloBDP(RatesModel(ConstantDLGWGD(q=ones(9))), x.tr, 5)
 insertwgms(m, Dict(3=>[(0.1, 2)], 2=>[(0.3, 4)]))
 ```
 """
-function insertwgms(model::PhyloBDP{T}, wgms) where T
+function insertwgms(model::PhyloBDP{T}, wgms...) where T
     order = eltype(model.order)[]
     nodes = typeof(model.nodes)()
+    rates = deepcopy(model.rates)
     n = length(model)
     m = model.bound
+    wgms = collect_and_order(wgms)
     # x is the node to be copied, y is the parent of copy to created
     function walk(x, y)
         ys = [Node(id(x), NodeProbs(x, m, T), y)]
         if haskey(wgms, id(x))
             # iterate over WGMs on the relevant branch starting from the farthest
-            for (t, k) in sort(wgms[id(x)], rev=true)
+            for (t, k) in wgms[id(x)]
                 xs = _insertwgm!(ys[1], n+1, k, t)
                 # note that v replaces the relevant daughter node
-                pop!(ys)
-                ys = [ys; xs]
+                rates.q[id(last(xs))] = 0.
+                popfirst!(ys)
+                ys = [xs; ys]
                 n += 2
             end
         end
-        for c in children(x) walk(c, ys[end]) end
+        for c in children(x) walk(c, first(ys)) end
         push!(order, ys...)
         for y in ys; nodes[id(y)] = y; end
     end
     walk(getroot(model), nothing)
-    model = PhyloBDP(model.rates, nodes, order, m, model.cond)
+    model = PhyloBDP(rates, model.rootp, nodes, order, m, model.cond)
     setmodel!(model)  # assume the model should be initialized
     return model
 end
 
+function collect_and_order(pairs)
+    d = Dict()
+    for p in pairs
+        !haskey(d, first(p)) ? d[first(p)] = [last(p)] : push!(d[first(p)], last(p))
+        sort!(d[first(p)], rev=true)
+    end
+    return d
+end
 

@@ -53,11 +53,11 @@ Similar to `ConstantDLG`, but with a field for whole-genome multiplication
 (WGM) nodes in the phylogeny, which have a single retention rate parameter
 `q` each.
 """
-@with_kw struct ConstantDLGWGM{T} <: RatesModel{T}
+@with_kw struct ConstantDLGWGM{T,I} <: RatesModel{T}
     λ::T = 0.3
     μ::T = 0.5
     κ::T = 0.
-    q::Vector{T} = Float64[]
+    q::Dict{I,T} = Dict{UInt16,Float64}()
 end
 
 getθ(m::ConstantDLGWGM, node) = 
@@ -74,6 +74,8 @@ Simple branch-wise rates duplication-loss and gain model.
     κ::Vector{T}
 end
 
+DLG(λ, μ, κ) = DLG(promote(λ, μ, κ)...)
+
 # XXX: why exactly do we keep them on log-scale?
 getθ(m::DLG, node) = (
     λ=exp(m.λ[id(node)]), 
@@ -88,9 +90,11 @@ Similar to `DLG`, but with WGM nodes, see also `ConstantDLGWGM`.
 @with_kw struct DLGWGM{T} <: RatesModel{T}
     λ::Vector{T}
     μ::Vector{T}
-    q::Vector{T}
+    q::Vector{T}  # make it a dict or think of something better altogether
     κ::Vector{T}
 end
+
+DLG(λ, μ, q, κ) = DLG(promote(λ, μ, q, κ)...)
 
 function getθ(m::DLGWGM, node)
     return if isawgm(node)

@@ -110,25 +110,18 @@ function getϕψ′(ϕ, ψ, ϵ)
     probify(ϕ′), probify(ψ′)
 end
 
-# NOTE that this does not involve the gain model!
-function setϵ!(n::ModelNode{T}, rates::M) where {T,M<:LinearModel}
-    isleaf(n) && return  # XXX or should we set ϵ to -Inf?
-    θn = getθ(rates, n)
-    if iswgm(n)
-        c = first(children(n))
-        ϵc = getϵ(c, 2)
-        ϵn = wgmϵ(θn.q, getk(n), ϵc) 
-        setϵ!(c, 1, ϵn)
-        setϵ!(n, 2, ϵn)
+function setϵ!(n::ModelNode{T}, rates) where T
+    θ = getθ(rates, n)
+    if isleaf(n) 
+        ϵ2 = T(-Inf)
+    elseif iswgm(n)
+        ϵ2 = wgmϵ(θ.q, getk(n), getϵ(n[1], 1))
     else
-        setϵ!(n, 2, zero(T))
-        for c in children(n)
-            θc = getθ(rates, c)
-            ϵc = log(extp(distance(c), θc.λ, θc.μ, exp(getϵ(c, 2))))
-            setϵ!(c, 1, ϵc)
-            setϵ!(n, 2, getϵ(n, 2) + ϵc)
-        end
+        ϵ2 = sum(getϵ.(children(n), 1))
     end
+    setϵ!(n, 2, ϵ2)
+    ϵ1 = log(extp(distance(n), θ.λ, θ.μ, exp(ϵ2)))
+    setϵ!(n, 1, ϵ1)
 end
 
 """
@@ -143,7 +136,7 @@ X' = 1 + Y where Y is Binomial(k - 1, q)).
 wgmϵ(q, k, logϵ) = logϵ + (k - 1) * log(q * (exp(logϵ) - 1.) + 1.)
 
 # Conditional survival transition probability matrix
-function setW!(n::ModelNode{T}, rates::V) where {T,V<:LinearModel}
+function setW!(n::ModelNode{T}, rates) where T
     isroot(n) && return
     ϵ = getϵ(n, 2)
     θ = getθ(rates, n)
