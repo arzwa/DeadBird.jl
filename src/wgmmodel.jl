@@ -1,4 +1,4 @@
-# This is fine and reasonably clean I guess
+# inserts a (WGMk,post-WGMk) node pair at time `t` above `node`
 function _insertwgm!(node::ModelNode{T,I}, n, k, t) where {T,I}
     # initially: u -l→ v 
     # the goal:  u -(l-t)→ w -0→ x -t→ v
@@ -44,10 +44,10 @@ function insertwgms(model::PhyloBDP{T}, wgms...) where T
         ys = [Node(id(x), NodeProbs(x, m, T), y)]
         if haskey(wgms, id(x))
             # iterate over WGMs on the relevant branch starting from the farthest
-            for (t, k) in wgms[id(x)]
+            for (t, k, q) in wgms[id(x)]
                 xs = _insertwgm!(ys[1], n+1, k, t)
                 # note that v replaces the relevant daughter node
-                rates.q[id(last(xs))] = 0.
+                rates.q[id(last(xs))] = q
                 popfirst!(ys)
                 ys = [xs; ys]
                 n += 2
@@ -66,7 +66,9 @@ end
 function collect_and_order(pairs)
     d = Dict()
     for p in pairs
-        !haskey(d, first(p)) ? d[first(p)] = [last(p)] : push!(d[first(p)], last(p))
+        !haskey(d, first(p)) ? 
+            d[first(p)] = [last(p)] : 
+            push!(d[first(p)], last(p))
         sort!(d[first(p)], rev=true)
     end
     return d

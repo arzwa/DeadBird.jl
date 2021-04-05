@@ -12,8 +12,7 @@ struct PPSim{T,V}
     n::Int
 end
 
-Base.show(io::IO, x::PPSim) = 
-    write(io, "PP simulations (N=$(x.N), n=$(x.n))\n$(table(x, abbr=false))")
+Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N=$(x.N), n=$(x.n))")
 
 function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=true)
     sp = sp == :all ? collect(keys(x.data)) : sp
@@ -120,7 +119,7 @@ function getsteps(X)
     (x=x, y=y)
 end
 
-function pppvalue(x::PPSim, sp::Symbol, k) 
+function pppvalue(x::PPSim, sp, k) 
     p = ecdf(x.sims[sp][k,:])(x.data[sp][k])
     p > 0.5 ? 1 - p : p
 end
@@ -179,7 +178,7 @@ end
     layout --> length(data) 
     xscale --> :log10
     ϵ = 1/2pps.N
-    ylims --> (log10(ϵ), 0)
+    ylims --> (log10(ϵ/5), 0.2)
     
     for (i, (k,v)) in enumerate(data)
         sp = isnothing(taxa) ? 

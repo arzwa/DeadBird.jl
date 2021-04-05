@@ -61,7 +61,18 @@ Similar to `ConstantDLG`, but with a field for whole-genome multiplication
 end
 
 getθ(m::ConstantDLGWGM, node) = 
-    (λ=m.λ, μ=m.μ, κ=m.κ, q=isawgm(node) ? m.q[wgmid(node)] : nothing)
+    (λ=m.λ, μ=m.μ, κ=m.κ, q=isawgm(node) ? m.q[wgmid(node)] : NaN)
+
+# only for dispatch when modeling excess genes...
+@with_kw struct ExcessConstantDLGWGM{T,I} <: RatesModel{T}
+    λ::T = 0.3
+    μ::T = 0.5
+    κ::T = 0.
+    q::Dict{I,T} = Dict{UInt16,Float64}()
+end
+
+getθ(m::ExcessConstantDLGWGM, node) = 
+    (λ=m.λ, μ=m.μ, κ=m.κ, q=isawgm(node) ? m.q[wgmid(node)] : NaN)
 
 """
     DLG{T}

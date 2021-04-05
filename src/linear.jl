@@ -110,6 +110,11 @@ function getϕψ′(ϕ, ψ, ϵ)
     probify(ϕ′), probify(ψ′)
 end
 
+"""
+    setϵ!(n, rates)
+
+Set the extinction probabilities for node `n` given the rates.
+"""
 function setϵ!(n::ModelNode{T}, rates) where T
     θ = getθ(rates, n)
     if isleaf(n) 
@@ -135,15 +140,18 @@ X' = 1 + Y where Y is Binomial(k - 1, q)).
 """
 wgmϵ(q, k, logϵ) = logϵ + (k - 1) * log(q * (exp(logϵ) - 1.) + 1.)
 
-# Conditional survival transition probability matrix
+"""
+    setW!(n, rates)
+
+Compute the conditional survival transition probability matrix for teh branch
+leading to node `n`.
+"""
 function setW!(n::ModelNode{T}, rates) where T
     isroot(n) && return
-    ϵ = getϵ(n, 2)
-    θ = getθ(rates, n)
     if iswgmafter(n)
-        wstar_wgm!(n.data.W, getk(parent(n)), θ, ϵ)
+        wstar_wgm!(n, rates)
     else
-        wstar!(n.data.W, distance(n), θ, ϵ)
+        wstar!(n.data.W, distance(n), getθ(rates, n), getϵ(n, 2))
     end
 end
 
@@ -154,7 +162,7 @@ Compute the transition probabilities for the conditional survival process
 recursively (not implemented using recursion though!). Note that the resulting
 transition matrix is *not* a stochastic matrix of some Markov chain.
 """
-function wstar!(W::AbstractMatrix{T}, t, θ, ϵ) where T  # compute w* (Csuros Miklos '09)
+function wstar!(W::AbstractMatrix{T}, t, θ, ϵ) where T
     @unpack λ, μ, κ = θ
     l = size(W, 1) - 1
     ϕ , ψ  = getϕψ(t, λ, μ)        # p , q  in Csuros
@@ -183,7 +191,27 @@ function wstar!(W::AbstractMatrix{T}, t, θ, ϵ) where T  # compute w* (Csuros M
     end
 end
 
-# correct for WGDs at least
+"""
+    wstar_wgm!
+
+Compute transition probabilities for conditional survival process across a WGM
+node. This computes the entries for the W matrix of a `wgmafter` node. The event
+is a `k`-ploidization and we assume a model where a duplicated gene is retained
+post-WGM independently with probability `q`.
+
+!!! note
+    Transition probabilities are different when we model excess number of genes
+    in a family compared to total family sizes.
+"""
+function wstar_wgm!(n, rates::ExcessConstantDLGWGM)
+    wstar_wgm_ne_nonrecursive!(n.data.W, getk(parent(n)), getθ(rates, n), getϵ(n, 2))
+    #wstar_wgm_ne!(n.data.W, getk(parent(n)), getθ(rates, n), getϵ(n, 2))
+end
+
+function wstar_wgm!(n, rates)
+    wstar_wgm!(n.data.W, getk(parent(n)), getθ(rates, n), getϵ(n, 2))
+end
+
 function wstar_wgm!(W, k, θ, logϵ)
     @unpack λ, μ, q = θ
     l = size(W, 1) - 1
@@ -192,16 +220,96 @@ function wstar_wgm!(W, k, θ, logϵ)
     for j=1:k
         p = zero(λ)
         for n=j:k
-            p_ = (1. - ϵ)^j * ϵ^(n-j) * q^(n-1) * (1. - q)^(k-n)
-            p += binomial(n, j)*binomial(k-1, n-1)*p_  # couldn't obtain closed form
+            p_ = binomial(k-1, n-1) * q^(n-1) * (1. - q)^(k-n)  
+            # n-1 out of k-1 excess genes retained, n genes in total
+            p += p_ * binomial(n, j) * (1. - ϵ)^j * ϵ^(n-j)     
+            # j of n retained genes survive
         end
         W[2, j+1] = log(p)
     end
     for i=2:l, j=i:(min(k*i,l))
         W[i+1, j+1] = -Inf  # for safety 
-        # for a `k`-plication, we have min(j-1, k) terms to some to get pᵢⱼ
+        # for a `k`-plication, we have min(j-1, k) terms to sum to get pᵢⱼ
         for n=1:min(j-i+1,k)
             W[i+1, j+1] = logaddexp(W[i+1, j+1], W[2, n+1] + W[i, j-n+1])
+        end
+    end
+end
+
+@doc raw"""
+    wstar_wgm_ne!(W, k, θ, logϵ)
+
+When we use the linear BDIP on the number of excess genes, the calculation for
+the conditional survival transition matrix is slightly different! The full
+solution seems to be
+
+```math
+w_{ij} = \sum_{n=0}^a 
+    \binomial{i+n}{j}(1-\epsilon)^j \epsilon^{n-j} 
+    \binomial{a}{n} q^n (1-q)^{a-n}
+```
+
+where `a = (k-1)*(i+1)`.
+
+!!! warn
+    This leads to overflows in binomial, we should figure out a recursion...
+"""
+function wstar_wgm_ne_nonrecursive!(W, k, θ, logϵ)
+    @unpack q = θ
+    l = size(W, 1) - 1
+    l1me = log1mexp(logϵ) 
+    imax = (l+1)*k
+    if q ≈ zero(q)
+        W[1,1] = zero(q)
+        for i=1:l
+            @inbounds W[i+1, i+1] = W[i,i] + l1me
+        end
+        return
+    end
+    B = bctable(imax, imax)  
+    for i=0:l, j=i:min(l, k*(i+1)-1)
+        a = (k-1)*(i+1)
+        W[i+1, j+1] = -Inf
+        for n=0:a
+            #p_ = binomial(i+n, j) * (1-ϵ)^j * ϵ^(i+n-j)
+            #p_ = B[i+n+1, j+1] * (1-ϵ)^j * ϵ^(i+n-j)
+            p_ = log(B[i+n+1, j+1]) + j*l1me + logϵ * (i+n-j) 
+            p_ += log(B[a+1, n+1]) + n*log(q) + (a-n) * log(1. - q)
+            #wij += p_ * binomial(a, n) * q^n * (1-q)^(a-n)
+            #wij += p_ * B[a+1, n+1] * q^n * (1-q)^(a-n)
+            W[i+1, j+1] = logaddexp(W[i+1, j+1], p_)
+        end
+    end
+end
+
+@memoize function bctable(imax, jmax)
+    X = zeros(Int, imax+1, jmax+1)
+    X[1:end,1] .= 1
+    for i=1:imax, j=1:i
+        X[i+1, j+1] = X[i, j] + X[i, j+1]
+    end
+    return X
+end
+
+# haven't figure this out yet...
+function wstar_wgm_ne!(W, k, θ, logϵ)
+    @unpack q = θ
+    l = size(W, 1) - 1
+    ϵ = exp(logϵ)
+    for j=0:l
+        a = k-1
+        wij = zero(ϵ) 
+        for n=0:a
+            p_ = binomial(n, j) * (1-ϵ)^j * ϵ^(n-j)
+            wij += p_ * binomial(a, n) * q^n * (1-q)^(a-n)
+        end
+        W[1, j+1] = log(wij)
+    end
+    nϵ = log1mexp(logϵ)
+    for i=1:l, j=i:(min(k*(i+1)-1,l))
+        W[i+1, j+1] = -Inf  # for safety 
+        for n=0:min(j-i,k-1)
+            W[i+1, j+1] = logaddexp(W[i+1, j+1], W[1, n+1] + W[i, j-n] + nϵ)
         end
     end
 end

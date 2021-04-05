@@ -46,6 +46,7 @@ end
 
 # constructor, returns the bound as well (for the PhyloBDP model constructor)
 CountDAG(df, tree) = CountDAG(Matrix(df), names(df), tree)
+CountDAG(df, model::PhyloBDP) = CountDAG(Matrix(df), names(df), root(model))
 
 function CountDAG(matrix::Matrix, names, tree)
     colindex = Dict(string(s)=>i for (i,s) in enumerate(names))

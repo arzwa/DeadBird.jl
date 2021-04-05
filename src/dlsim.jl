@@ -105,15 +105,29 @@ end
 function simwalk!(rng::AbstractRNG, profile, m, n, idx, X=nothing)
     # simulate current edge
     θ  = getθ(m.rates, n)
-    X′ = isnothing(X) ?  # root 
-        rand(rng, m.rootp) : 
+    X′ = if isnothing(X)  # root 
+        rand(rng, m.rootp) 
+    elseif iswgmafter(n)  # wgm node
+        randwgm(rng, m.rates, X, θ, getk(parent(n)))
+    else  # all other nodes
         randedge(rng, X, θ, distance(n)) 
+    end
     if isleaf(n) 
         profile[idx[name(n)]] = X′
         return X′ 
     end
     next = map(c->simwalk!(rng, profile, m, c, idx, X′), children(n))
     vcat(X′, next...)
+end
+
+function randwgm(rng::AbstractRNG, rates, X, θ, k)
+    retained = rand(rng, Binomial(X*(k-1), θ.q))
+    return X + retained
+end
+
+function randwgm(rng::AbstractRNG, rates::ExcessConstantDLGWGM, X, θ, k)
+    retained = rand(rng, Binomial((X+1)*(k-1), θ.q))
+    return X + retained
 end
 
 function randedge(rng::AbstractRNG, X, θ, t)

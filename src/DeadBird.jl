@@ -14,6 +14,7 @@ using Random
 using SpecialFunctions
 using Bijectors
 using LinearAlgebra
+using Memoize
 import StatsBase: loglikelihood
 
 include("rmodels.jl")
