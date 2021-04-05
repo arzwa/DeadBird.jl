@@ -11,10 +11,10 @@ rootprior = ShiftedGeometric(η)</code></pre><pre class="documenter-example-outp
     dag ~ PhyloBDP(θ, rootprior, tree, bound)
 end</code></pre><pre class="documenter-example-output">singlerate (generic function with 1 method)</pre><h2 id="Maximum-likelihood-inference"><a class="docs-heading-anchor" href="#Maximum-likelihood-inference">Maximum likelihood inference</a><a id="Maximum-likelihood-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Maximum-likelihood-inference" title="Permalink"></a></h2><pre><code class="language-julia">model = singlerate(dag, bound, tree, rootprior)
 @time mleresult = optimize(model, MLE())</code></pre><pre class="documenter-example-output">ModeResult with maximized lp of -3650.20
-1-element Named Array{Float64,1}
+1-element Named Vector{Float64}
 A  │ 
 ───┼──────────
-:λ │ 0.0950648</pre><p>For the complete data set, this takes about 10 seconds.</p><p>It is straightforward to adapt the model definition to allow for different duplication and loss rates, non-zero gain rates (<code>κ</code>) or different root priors.</p><h2 id="Bayesian-inference"><a class="docs-heading-anchor" href="#Bayesian-inference">Bayesian inference</a><a id="Bayesian-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Bayesian-inference" title="Permalink"></a></h2><p>Now we&#39;ll perform Bayesian inference using the No-U-turn sampler. Note that we&#39;ve defined an uninformative flat prior (<code>FlatPos(0.0)</code>), so we expect to find a posterior mean estimate for <code>λ</code> that coincides with the MLE.</p><pre><code class="language-julia">chain = sample(model, NUTS(), 100)</code></pre><pre class="documenter-example-output">Chains MCMC chain (100×13×1 Array{Float64,3}):
+:λ │ 0.0950648</pre><p>For the complete data set, this takes about 10 seconds.</p><p>It is straightforward to adapt the model definition to allow for different duplication and loss rates, non-zero gain rates (<code>κ</code>) or different root priors.</p><h2 id="Bayesian-inference"><a class="docs-heading-anchor" href="#Bayesian-inference">Bayesian inference</a><a id="Bayesian-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Bayesian-inference" title="Permalink"></a></h2><p>Now we&#39;ll perform Bayesian inference using the No-U-turn sampler. Note that we&#39;ve defined an uninformative flat prior (<code>FlatPos(0.0)</code>), so we expect to find a posterior mean estimate for <code>λ</code> that coincides with the MLE.</p><pre><code class="language-julia">chain = sample(model, NUTS(), 100)</code></pre><pre class="documenter-example-output">Chains MCMC chain (100×13×1 Array{Float64, 3}):
 
 Iterations        = 1:100
 Thinning interval = 1
@@ -27,18 +27,18 @@ Summary Statistics
   parameters      mean       std   naive_se      mcse       ess      rhat
       Symbol   Float64   Float64    Float64   Missing   Float64   Float64
 
-           λ    0.0949    0.0038     0.0004   missing   65.2409    0.9901
+           λ    0.0950    0.0037     0.0004   missing   27.2475    1.0104
 
 Quantiles
   parameters      2.5%     25.0%     50.0%     75.0%     97.5%
       Symbol   Float64   Float64   Float64   Float64   Float64
 
-           λ    0.0881    0.0924    0.0953    0.0975    0.1016
+           λ    0.0888    0.0927    0.0949    0.0978    0.1019
 </pre><p>Of course, it would be better to run such a chain for more iterations, e.g. 1000, but for the sake of time I&#39;m only taking a 100 samples here. The 95% uncertainty interval for the turnover rate can be obtained as</p><pre><code class="language-julia">quantile(chain; q=[0.025, 0.975])</code></pre><pre class="documenter-example-output">Quantiles
   parameters      2.5%     97.5%
       Symbol   Float64   Float64
 
-           λ    0.0881    0.1016
+           λ    0.0888    0.1019
 </pre><h2 id="Other-models"><a class="docs-heading-anchor" href="#Other-models">Other models</a><a id="Other-models-1"></a><a class="docs-heading-anchor-permalink" href="#Other-models" title="Permalink"></a></h2><p>It is straightforward to use the <a href="https://turing.ml/dev/">Turing.jl</a> model syntax (using the <code>@model</code> macro) in combination with the various rates models and root priors defined in DeadBird (<code>ConstantDLG</code>, <code>DLG</code>, <code>DLGWGM</code>, <code>ShiftedBetaGeometric</code>, ...) to specify complicated models. A not so complicated example would be the following. First we filter the data to only allow for non-extinct families:</p><pre><code class="language-julia">nonextinct = filter(x-&gt;all(Array(x) .&gt; 0), data);</code></pre><p>We will model the excess number of genes, i.e. the number of extra (duplicated) genes <em>per</em> family, instead of the total number of genes.</p><pre><code class="language-julia">excessgenes = nonextinct .- 1;</code></pre><p>Again we construct a DAG object</p><pre><code class="language-julia">dag, bound = CountDAG(excessgenes, tree)</code></pre><pre class="documenter-example-output">(dag = CountDAG({616, 1204} directed simple Int64 graph), bound = 72)</pre><p>The model we specify is a linear birth-death and immigration process with immigration (gain) rate equal to the duplication rate, <code>κ = λ</code>, and loss rate <code>μ</code>. This corresponds to a model where genes duplicate at rate λ, (note that a <code>0 -&gt; 1</code> transition is also a duplication here since the zero state corresponds to a single copy family), and where <em>duplicated genes</em> get lost at rate <code>μ</code>. We assume <code>λ &lt; μ</code>, in which case there is a geometric stationary distribution with mean <code>1 - λ/μ</code> for the excess number of genes in a family.</p><pre><code class="language-julia">bound01(η) = η &lt;= zero(η) ? zero(η) + 1e-16 : η &gt;= one(η) ? one(η) - 1e-16 : η
 
 @model nonextinctmodel(dag, bound, tree) = begin
@@ -49,7 +49,7 @@ Quantiles
     rates = ConstantDLG(λ=λ, μ=μ, κ=λ)
     rootp = Geometric(η)
     dag ~ PhyloBDP(rates, rootp, tree, bound, cond=:none)
-end</code></pre><pre class="documenter-example-output">nonextinctmodel (generic function with 1 method)</pre><p>and we sample</p><pre><code class="language-julia">chain = sample(nonextinctmodel(dag, bound, tree), NUTS(), 100)</code></pre><pre class="documenter-example-output">Chains MCMC chain (100×14×1 Array{Float64,3}):
+end</code></pre><pre class="documenter-example-output">nonextinctmodel (generic function with 1 method)</pre><p>and we sample</p><pre><code class="language-julia">chain = sample(nonextinctmodel(dag, bound, tree), NUTS(), 100)</code></pre><pre class="documenter-example-output">Chains MCMC chain (100×14×1 Array{Float64, 3}):
 
 Iterations        = 1:100
 Thinning interval = 1
@@ -62,35 +62,35 @@ Summary Statistics
   parameters      mean       std   naive_se      mcse       ess      rhat
       Symbol   Float64   Float64    Float64   Missing   Float64   Float64
 
-           η    0.8812    0.0061     0.0006   missing   58.6979    1.0192
-           μ    0.9905    0.0534     0.0053   missing   62.8924    1.0367
+           η    0.8828    0.0074     0.0007   missing   71.9659    0.9901
+           μ    0.9988    0.0544     0.0054   missing   50.8741    1.0438
 
 Quantiles
   parameters      2.5%     25.0%     50.0%     75.0%     97.5%
       Symbol   Float64   Float64   Float64   Float64   Float64
 
-           η    0.8711    0.8768    0.8812    0.8871    0.8923
-           μ    0.8857    0.9591    0.9897    1.0409    1.0768
+           η    0.8690    0.8768    0.8823    0.8886    0.8955
+           μ    0.9104    0.9612    1.0005    1.0356    1.0980
 </pre><p>Get the posterior as a dataframe</p><pre><code class="language-julia">pdf = DataFrame(chain)
 μs = pdf[:, :μ]
-λs = μs .* (1 .- pdf[:,:η])</code></pre><pre class="documenter-example-output">100-element Array{Float64,1}:
- 0.11625525550652532
- 0.12187807088755273
- 0.1148068030205671
- 0.12609886640311638
- 0.10208008784191422
- 0.13208816125561554
- 0.12401902089006842
- 0.12193167193192854
- 0.1251403985399725
- 0.12208922105425277
+λs = μs .* (1 .- pdf[:,:η])</code></pre><pre class="documenter-example-output">100-element Vector{Float64}:
+ 0.12123492295943834
+ 0.11421536003917236
+ 0.11323874644335888
+ 0.11849156095947991
+ 0.11726106431872911
+ 0.11674401553603113
+ 0.11459264954959776
+ 0.11592200061756462
+ 0.11825031530389292
+ 0.11561012528207117
  ⋮
- 0.1297030652193162
- 0.10864828427943587
- 0.1183421475322533
- 0.12873333302396514
- 0.12389754196856459
- 0.10671383162021221
- 0.11218150473351343
- 0.11218150473351343
- 0.1267213190010473</pre><p>The marginal posterior mean duplication rate (and 95% uncertainty interval) is</p><pre><code class="language-julia">mean(λs), quantile(λs, [0.025, 0.975])</code></pre><pre class="documenter-example-output">(0.11748647685940056, [0.10404633837362177, 0.12944046676643023])</pre><p>The marginal posterior mean loss rate <em>per duplicated gene</em> is</p><pre><code class="language-julia">mean(μs), quantile(μs, [0.025, 0.975])</code></pre><pre class="documenter-example-output">(0.9905057950440737, [0.8856954990269846, 1.0768320207367874])</pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Index</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Thursday 21 January 2021 13:48">Thursday 21 January 2021</span>. Using Julia version 1.5.3.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 0.11977771738031176
+ 0.12150627998333167
+ 0.11060712007211497
+ 0.1170678374198124
+ 0.13050422876897946
+ 0.12089153669048537
+ 0.11708018798996883
+ 0.11155072204616331
+ 0.10856430917755293</pre><p>The marginal posterior mean duplication rate (and 95% uncertainty interval) is</p><pre><code class="language-julia">mean(λs), quantile(λs, [0.025, 0.975])</code></pre><pre class="documenter-example-output">(0.11685729684557682, [0.1020488377613819, 0.13013555277305144])</pre><p>The marginal posterior mean loss rate <em>per duplicated gene</em> is</p><pre><code class="language-julia">mean(μs), quantile(μs, [0.025, 0.975])</code></pre><pre class="documenter-example-output">(0.9988468675770684, [0.9103711667773889, 1.0979774220068215])</pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Index</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> on <span class="colophon-date" title="Monday 5 April 2021 12:13">Monday 5 April 2021</span>. Using Julia version 1.6.0.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
