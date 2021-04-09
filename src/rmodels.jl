@@ -101,8 +101,8 @@ Similar to `DLG`, but with WGM nodes, see also `ConstantDLGWGM`.
 @with_kw struct DLGWGM{T} <: RatesModel{T}
     λ::Vector{T}
     μ::Vector{T}
-    q::Vector{T}  # make it a dict or think of something better altogether
     κ::Vector{T}
+    q::Dict{I,T} = Dict{UInt16,Float64}()
 end
 
 DLG(λ, μ, q, κ) = DLG(promote(λ, μ, q, κ)...)
