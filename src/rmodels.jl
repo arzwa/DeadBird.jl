@@ -110,8 +110,7 @@ function getθ(m::DLGWGM, node)
     else
         (λ=exp(m.λ[id(node)]), 
          μ=exp(m.μ[id(node)]), 
-         κ=exp(m.κ[id(node)]), 
-         η=m.η)
+         κ=exp(m.κ[id(node)])) 
     end
 end
 
