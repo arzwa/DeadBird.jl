@@ -12,7 +12,7 @@ using RecipesBase
 using Printf
 using Random
 using SpecialFunctions
-using Bijectors
+using Bijectors  # used in clocks
 using LinearAlgebra
 using Memoize
 import StatsBase: loglikelihood
@@ -58,7 +58,7 @@ function example_data()
 end
 
 export CountDAG, ProfileMatrix, Profile
-export ConstantDLG, DLG, PhyloBDP, ModelArray
+export ConstantDLG, ConstantDLGWGM, DLG, DLGWGM, PhyloBDP, ModelArray
 export ShiftedGeometric, ShiftedBetaGeometric, BetaGeometric
 export simulate
 

@@ -34,7 +34,7 @@ end
     r0 = ConstantDLG(λ=0.1, μ=0.1, κ=0.1);
     m0 = PhyloBDP(r0, BetaGeometric(0.94, 4.), tr, bound, cond=:none);
     n = getlca(tr, "Scerevisiae", "Vpolyspora")
-    r1 = ExcessConstantDLGWGM(λ=0.1, μ=0.1, κ=0.1);
+    r1 = ConstantDLGWGM(λ=0.1, μ=0.1, κ=0.1, excess=true);
     m1 = PhyloBDP(r1, BetaGeometric(0.94, 4.), tr, bound, cond=:none);
     m1 = DeadBird.insertwgms(m1, id(n)=>(0.0229, 2, 0.));
     X1, _ = CountDAG(counts, m1)
@@ -49,13 +49,15 @@ end
     tr = readtree(joinpath(datadir, "ygob/ygob-12taxa.nw"))
     rootp = BetaGeometric(0.94, 4.)
     n = getlca(tr, "Scerevisiae", "Vpolyspora")
-    model = PhyloBDP(ExcessConstantDLGWGM(λ=0.1, μ=1.7, κ=0.1), rootp, tr, 1, cond=:none)
+    l = length(postwalk(tr))
+    r = DLGWGM(λ=zeros(l), μ=zeros(l), κ=zeros(l), excess=true)
+    model = PhyloBDP(r, rootp, tr, 1, cond=:none)
     model = DeadBird.insertwgms(model, id(n)=>(0.0229, 2, 0.99));
     sdata = simulate(model, 100);
     dag, bound = CountDAG(sdata, model)
     model = model(bound=bound)                    
     function gradfun(x, model, data)
-        r = ExcessConstantDLGWGM(λ=x[1], μ=x[2], κ=x[1], q=Dict(0x0018 => x[3]))
+        r = ConstantDLGWGM(λ=x[1], μ=x[2], κ=x[1], q=Dict(0x0018 => x[3]), excess=true)
         m = model(rates=r)
         return loglikelihood(m, data)
     end

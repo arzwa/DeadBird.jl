@@ -239,5 +239,64 @@ readtree = readnw ∘ readline
     @testset "Ancestral states" begin
     end
 
+    # WGD related
+    @testset "q = 0 tests" begin 
+        df = CSV.read(joinpath(datadir, "dicots/9dicots-f01-25.csv"), DataFrame)
+        tr = readtree(joinpath(datadir, "dicots/9dicots.nw"))
+        d0, bound = CountDAG(df, tr)
+        rates = DeadBird.ConstantDLGWGM(λ=0.1, μ=0.1, κ=0.1);
+        m0 = PhyloBDP(rates, ShiftedGeometric(0.7), tr, bound);
+        m1 = DeadBird.insertwgms(m0, 12=>(0.1, 2, 0.)); 
+        w2 = [12=>(0.1, 2, 0.), 6=>(0.3, 4, 0), 6=>(0.35, 2, 0.)]
+        m2 = DeadBird.insertwgms(m0, w2...)
+        m3 = DeadBird.insertwgms(m0, 12=>(0.1, 3, 0.), w2... )
+        d1, _ = CountDAG(df, m1)
+        d2, _ = CountDAG(df, m2)
+        d3, _ = CountDAG(df, m3)
+        l0 = DeadBird.loglikelihood(m0, d0)
+        l1 = DeadBird.loglikelihood(m1, d1)
+        l2 = DeadBird.loglikelihood(m2, d2)
+        @test l0 ≈ l1 ≈ l2
+    end
+    
+    @testset "Excess model with WGMs" begin
+        df = CSV.read(joinpath(datadir, "ygob/ygob.N0.tsv"), DataFrame)
+        tr = readtree(joinpath(datadir, "ygob/ygob-12taxa.nw"))
+        x = DeadBird.getextra(df, tr)
+        counts = x.df[1:1,x.cols]
+        X0, bound = CountDAG(counts, tr)
+        r0 = ConstantDLG(λ=0.1, μ=0.1, κ=0.1);
+        m0 = PhyloBDP(r0, BetaGeometric(0.94, 4.), tr, bound, cond=:none);
+        n = getlca(tr, "Scerevisiae", "Vpolyspora")
+        r1 = ConstantDLGWGM(λ=0.1, μ=0.1, κ=0.1, excess=true);
+        m1 = PhyloBDP(r1, BetaGeometric(0.94, 4.), tr, bound, cond=:none);
+        m1 = DeadBird.insertwgms(m1, id(n)=>(0.0229, 2, 0.));
+        X1, _ = CountDAG(counts, m1)
+        l0 = loglikelihood(m0, X0)
+        l1 = loglikelihood(m1, X1)
+        @info "" l0 l1
+        @test l0 ≈ l1
+    end
+
+    @testset "WGD excess model simulation and gradient" begin
+        using ForwardDiff
+        tr = readtree(joinpath(datadir, "ygob/ygob-12taxa.nw"))
+        rootp = BetaGeometric(0.94, 4.)
+        n = getlca(tr, "Scerevisiae", "Vpolyspora")
+        r = ConstantDLGWGM(λ=0.1, μ=1.7, κ=0.1, excess=true)
+        model = PhyloBDP(r, rootp, tr, 1, cond=:none)
+        model = DeadBird.insertwgms(model, id(n)=>(0.0229, 2, 0.99));
+        sdata = simulate(model, 100);
+        dag, bound = CountDAG(sdata, model)
+        model = model(bound=bound)                    
+        function gradfun(x, model, data)
+            r = ConstantDLGWGM(λ=x[1], μ=x[2], κ=x[1], q=Dict(0x0018 => x[3]), excess=true)
+            m = model(rates=r)
+            return loglikelihood(m, data)
+        end
+        y = [0.1, 1.7, 0.01]
+        ∇ℓd = ForwardDiff.gradient(x->gradfun(x, model, dag), y)
+        @test all(isfinite.(∇ℓd))
+    end
 end
 

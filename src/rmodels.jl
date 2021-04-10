@@ -3,7 +3,6 @@ function isawgm end
 function wgmid end
 function nonwgmchild end
 
-
 """
     RatesModel
 
@@ -13,7 +12,7 @@ across the tree, branch-specific rates, models with WGD nodes, ...).
 abstract type RatesModel{T} end
 const LinearModel{T} = RatesModel{T}  # currently non-linear models no longer supported
 
-is_excessmodel(m::RatesModel) = true
+is_excessmodel(m::RatesModel) = false
 
 function Base.NamedTuple(m::M) where M<:RatesModel
     return (; (k => getfield(m, k) for k in propertynames(m))...)
@@ -93,7 +92,7 @@ getθ(m::DLG, node) = (
 
 Similar to `DLG`, but with WGM nodes, see also `ConstantDLGWGM`.
 """
-@with_kw struct DLGWGM{T} <: RatesModel{T}
+@with_kw struct DLGWGM{T,I} <: RatesModel{T}
     λ::Vector{T}
     μ::Vector{T}
     κ::Vector{T}
@@ -104,9 +103,15 @@ end
 function getθ(m::DLGWGM, node)
     return if isawgm(node)
         c = nonwgmchild(node)
-        (λ=exp(m.λ[id(c)]), μ=exp(m.μ[id(c)]), κ=exp(m.κ[id(c)]), q=m.q[wgmid(node)])
+        (λ=exp(m.λ[id(c)]), 
+         μ=exp(m.μ[id(c)]), 
+         κ=exp(m.κ[id(c)]), 
+         q=m.q[wgmid(node)])
     else
-        (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=exp(m.κ[id(node)]), η=m.η)
+        (λ=exp(m.λ[id(node)]), 
+         μ=exp(m.μ[id(node)]), 
+         κ=exp(m.κ[id(node)]), 
+         η=m.η)
     end
 end
 
