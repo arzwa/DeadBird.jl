@@ -2,7 +2,6 @@
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
-DeadBird = "a6db34b6-ea8f-496d-a49f-6ef7ed1dec48"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 LightGraphs = "093fc24a-ae57-5d10-9952-331d41423f4d"

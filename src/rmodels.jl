@@ -3,6 +3,7 @@ function isawgm end
 function wgmid end
 function nonwgmchild end
 
+
 """
     RatesModel
 
@@ -11,6 +12,8 @@ across the tree, branch-specific rates, models with WGD nodes, ...).
 """
 abstract type RatesModel{T} end
 const LinearModel{T} = RatesModel{T}  # currently non-linear models no longer supported
+
+is_excessmodel(m::RatesModel) = true
 
 function Base.NamedTuple(m::M) where M<:RatesModel
     return (; (k => getfield(m, k) for k in propertynames(m))...)
@@ -58,21 +61,13 @@ Similar to `ConstantDLG`, but with a field for whole-genome multiplication
     μ::T = 0.5
     κ::T = 0.
     q::Dict{I,T} = Dict{UInt16,Float64}()
+    excess = false
 end
 
 getθ(m::ConstantDLGWGM, node) = 
     (λ=m.λ, μ=m.μ, κ=m.κ, q=isawgm(node) ? m.q[wgmid(node)] : NaN)
 
-# only for dispatch when modeling excess genes...
-@with_kw struct ExcessConstantDLGWGM{T,I} <: RatesModel{T}
-    λ::T = 0.3
-    μ::T = 0.5
-    κ::T = 0.
-    q::Dict{I,T} = Dict{UInt16,Float64}()
-end
-
-getθ(m::ExcessConstantDLGWGM, node) = 
-    (λ=m.λ, μ=m.μ, κ=m.κ, q=isawgm(node) ? m.q[wgmid(node)] : NaN)
+is_excessmodel(m::ConstantDLGWGM) = m.excess
 
 """
     DLG{T}
@@ -103,9 +98,8 @@ Similar to `DLG`, but with WGM nodes, see also `ConstantDLGWGM`.
     μ::Vector{T}
     κ::Vector{T}
     q::Dict{I,T} = Dict{UInt16,Float64}()
+    excess = false
 end
-
-DLG(λ, μ, q, κ) = DLG(promote(λ, μ, q, κ)...)
 
 function getθ(m::DLGWGM, node)
     return if isawgm(node)
@@ -115,3 +109,5 @@ function getθ(m::DLGWGM, node)
         (λ=exp(m.λ[id(node)]), μ=exp(m.μ[id(node)]), κ=exp(m.κ[id(node)]), η=m.η)
     end
 end
+
+is_excessmodel(m::DLGWGM) = m.excess

@@ -203,13 +203,15 @@ post-WGM independently with probability `q`.
     Transition probabilities are different when we model excess number of genes
     in a family compared to total family sizes.
 """
-function wstar_wgm!(n, rates::ExcessConstantDLGWGM)
-    wstar_wgm_ne_nonrecursive!(n.data.W, getk(parent(n)), getθ(rates, n), getϵ(n, 2))
-    #wstar_wgm_ne!(n.data.W, getk(parent(n)), getθ(rates, n), getϵ(n, 2))
-end
-
 function wstar_wgm!(n, rates)
-    wstar_wgm!(n.data.W, getk(parent(n)), getθ(rates, n), getϵ(n, 2))
+    θ = getθ(rates, n)
+    ϵ = getϵ(n, 2)
+    k = getk(parent(n))
+    if is_excessmodel(rates)
+        wstar_wgm_ne_nonrecursive!(n.data.W, k, θ, ϵ)
+    else
+        wstar_wgm!(n.data.W, k, θ, ϵ )
+    end
 end
 
 function wstar_wgm!(W, k, θ, logϵ)

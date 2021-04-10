@@ -121,12 +121,8 @@ function simwalk!(rng::AbstractRNG, profile, m, n, idx, X=nothing)
 end
 
 function randwgm(rng::AbstractRNG, rates, X, θ, k)
-    retained = rand(rng, Binomial(X*(k-1), θ.q))
-    return X + retained
-end
-
-function randwgm(rng::AbstractRNG, rates::ExcessConstantDLGWGM, X, θ, k)
-    retained = rand(rng, Binomial((X+1)*(k-1), θ.q))
+    X′ = is_excessmodel(rates) ? X+1 : X
+    retained = rand(rng, Binomial(X′*(k-1), θ.q))
     return X + retained
 end
 
