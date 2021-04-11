@@ -1,7 +1,14 @@
 # defined here, but implemented elsewhere
 function isawgm end
 function wgmid end
-function nonwgmchild end
+
+function nonwgmchild(n)
+   while isawgm(n)
+       n = n[1]
+   end
+   return n
+end
+
 
 """
     RatesModel
