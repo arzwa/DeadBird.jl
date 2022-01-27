@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/><title>Drosophila · DeadBird.jl</title><script data-outdated-warner src="../assets/warner.js"></script><link href="https://cdnjs.cloudflare.com/ajax/libs/lato-font/3.0.0/css/lato-font.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/juliamono/0.039/juliamono-regular.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/fontawesome.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/solid.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/brands.min.css" rel="stylesheet" type="text/css"/><link href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.13.11/katex.min.css" rel="stylesheet" type="text/css"/><script>documenterBaseURL=".."</script><script src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.6/require.min.js" data-main="../assets/documenter.js"></script><script src="../siteinfo.js"></script><script src="../../versions.js"></script><script src="../../copy.js"></script><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-dark.css" data-theme-name="documenter-dark" data-theme-primary-dark/><link class="docs-theme-link" rel="stylesheet" type="text/css" href="../assets/themes/documenter-light.css" data-theme-name="documenter-light" data-theme-primary/><script src="../assets/themeswap.js"></script></head><body><div id="documenter"><nav class="docs-sidebar"><div class="docs-package-name"><span class="docs-autofit"><a href="../">DeadBird.jl</a></span></div><form class="docs-search" action="../search/"><input class="docs-search-query" id="documenter-search-query" name="q" type="text" placeholder="Search docs"/></form><ul class="docs-menu"><li><a class="tocitem" href="../">Index</a></li><li><span class="tocitem">Examples</span><ul><li class="is-active"><a class="tocitem" href><em>Drosophila</em></a><ul class="internal"><li><a class="tocitem" href="#Maximum-likelihood-inference"><span>Maximum likelihood inference</span></a></li><li><a class="tocitem" href="#Bayesian-inference"><span>Bayesian inference</span></a></li><li><a class="tocitem" href="#Other-models"><span>Other models</span></a></li></ul></li></ul></li><li><a class="tocitem" href="../api/">API</a></li></ul><div class="docs-version-selector field has-addons"><div class="control"><span class="docs-label button is-static is-size-7">Version</span></div><div class="docs-selector control is-expanded"><div class="select is-fullwidth is-size-7"><select id="documenter-version-selector"></select></div></div></div></nav><div class="docs-main"><header class="docs-navbar"><nav class="breadcrumb"><ul class="is-hidden-mobile"><li><a class="is-disabled">Examples</a></li><li class="is-active"><a href><em>Drosophila</em></a></li></ul><ul class="is-hidden-tablet"><li class="is-active"><a href><em>Drosophila</em></a></li></ul></nav><div class="docs-right"><a class="docs-edit-link" href="https://github.com/arzwa/DeadBird.jl/blob/master/docs/src/drosophila.md" title="Edit on GitHub"><span class="docs-icon fab"></span><span class="docs-label is-hidden-touch">Edit on GitHub</span></a><a class="docs-settings-button fas fa-cog" id="documenter-settings-button" href="#" title="Settings"></a><a class="docs-sidebar-button fa fa-bars is-hidden-desktop" id="documenter-sidebar-button" href="#"></a></div></header><article class="content" id="documenter-page"><h1 id="*Drosophila*"><a class="docs-heading-anchor" href="#*Drosophila*"><em>Drosophila</em></a><a id="*Drosophila*-1"></a><a class="docs-heading-anchor-permalink" href="#*Drosophila*" title="Permalink"></a></h1><p>Here I illustrate the usage of the DeadBird package for fitting phylogenetic birth-death process models to data using <strong>Maximum likelihood</strong> and <strong>Bayesian inference</strong>. We will fit a simple single-rate (turnover rate λ, as in e.g. CAFE) model to the 12 <em>Drosophila</em> species data set.</p><p>Load the required packages</p><pre><code class="language-julia hljs">using DeadBird
 using Distributions, Turing, CSV, DataFrames, NewickTree, Optim
-using Random; Random.seed!(671);</code></pre><p>Load the data</p><pre><code class="language-julia hljs">datadir = joinpath(@__DIR__, &quot;../../example/drosophila&quot;)
+using Random; Random.seed!(761);</code></pre><p>Load the data</p><pre><code class="language-julia hljs">datadir = joinpath(@__DIR__, &quot;../../example/drosophila&quot;)
 tree = readnw(readline(joinpath(datadir, &quot;tree.nw&quot;)))
 data = CSV.read(joinpath(datadir, &quot;counts-oib.csv&quot;), DataFrame);</code></pre><p>The data set size and number of taxa are</p><pre><code class="language-julia hljs">nrow(data), length(getleaves(tree))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(11519, 12)</code></pre><p>We&#39;ll take a subset of the data for the sake of time.</p><pre><code class="language-julia hljs">data = data[20:10:10010,:];
 first(data, 5)</code></pre><div class="data-frame"><p>5 rows × 12 columns</p><table class="data-frame"><thead><tr><th></th><th>dana</th><th>dere</th><th>dgri</th><th>dmel</th><th>dmoj</th><th>dper</th><th>dpse</th><th>dsec</th><th>dsim</th><th>dvir</th><th>dwil</th><th>dyak</th></tr><tr><th></th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th><th title="Int64">Int64</th></tr></thead><tbody><tr><th>1</th><td>7</td><td>7</td><td>9</td><td>7</td><td>6</td><td>7</td><td>7</td><td>7</td><td>7</td><td>6</td><td>7</td><td>7</td></tr><tr><th>2</th><td>7</td><td>5</td><td>9</td><td>5</td><td>4</td><td>7</td><td>7</td><td>5</td><td>5</td><td>5</td><td>4</td><td>5</td></tr><tr><th>3</th><td>4</td><td>4</td><td>6</td><td>4</td><td>5</td><td>6</td><td>5</td><td>4</td><td>5</td><td>5</td><td>4</td><td>4</td></tr><tr><th>4</th><td>5</td><td>4</td><td>7</td><td>5</td><td>3</td><td>3</td><td>3</td><td>4</td><td>5</td><td>3</td><td>3</td><td>4</td></tr><tr><th>5</th><td>5</td><td>4</td><td>3</td><td>4</td><td>2</td><td>4</td><td>4</td><td>5</td><td>7</td><td>3</td><td>1</td><td>4</td></tr></tbody></table></div><p>The average number of genes in non-extinct families is</p><pre><code class="language-julia hljs">m = mean(filter(x-&gt;x&gt;0,Matrix(data)))</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">1.127086653804211</code></pre><p>We can use this to parameterize the prior for the number of ancestral lineages</p><pre><code class="language-julia hljs">η = 1/m
@@ -9,8 +9,12 @@ rootprior = ShiftedGeometric(η)</code></pre><pre class="documenter-example-outp
     λ ~ Turing.FlatPos(0.)
     θ = ConstantDLG(λ=λ, μ=λ, κ=zero(λ))
     dag ~ PhyloBDP(θ, rootprior, tree, bound)
-end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">singlerate (generic function with 1 method)</code></pre><h2 id="Maximum-likelihood-inference"><a class="docs-heading-anchor" href="#Maximum-likelihood-inference">Maximum likelihood inference</a><a id="Maximum-likelihood-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Maximum-likelihood-inference" title="Permalink"></a></h2><pre><code class="language- hljs">model = singlerate(dag, bound, tree, rootprior)
-@time mleresult = optimize(model, MLE())</code></pre><p>For the complete data set, this takes about 10 seconds.</p><p>It is straightforward to adapt the model definition to allow for different duplication and loss rates, non-zero gain rates (<code>κ</code>) or different root priors.</p><p>Alternatively we could use the ProfileMatrix, which admits models that deal with variation across families. We can also use this to fit models independently across families. Here we will estimate the MLE of a single turnover rate for 100 families independently.</p><pre><code class="language-julia hljs">matrix, bound = ProfileMatrix(data, tree)
+end</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">singlerate (generic function with 1 method)</code></pre><h2 id="Maximum-likelihood-inference"><a class="docs-heading-anchor" href="#Maximum-likelihood-inference">Maximum likelihood inference</a><a id="Maximum-likelihood-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Maximum-likelihood-inference" title="Permalink"></a></h2><p>First we show how to conduct MLE of a single parameter model for the entire data (i.e. we estimate a genome-wide parameter) using the <code>CountDAG</code> data structure.</p><pre><code class="language-julia hljs">model = singlerate(dag, bound, tree, rootprior)
+@time mleresult = optimize(model, MLE())</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">ModeResult with maximized lp of -3650.20
+1-element Named Vector{Float64}
+A  │ 
+───┼──────────
+:λ │ 0.0950648</code></pre><p>For the complete data set of &gt;10000 families, this takes about 10 seconds.</p><p>It is straightforward to adapt the model definition to allow for different duplication and loss rates, non-zero gain rates (<code>κ</code>) or different root priors.</p><p>Alternatively we could use the ProfileMatrix, which admits models that deal with variation across families. We can also use this to fit models independently across families. Here we will estimate the MLE of a single turnover rate for 100 families independently.</p><pre><code class="language-julia hljs">matrix, bound = ProfileMatrix(data, tree)
 
 @model singlerate(mat, bound, tree, rootprior) = begin
     λ ~ Turing.FlatPos(0.)
@@ -24,19 +28,229 @@ end
     model = singlerate(x, x.x[1], tree, rootprior)
     mleresult = optimize(model, MLE())
     mleresult.lp, mleresult.values[1]
-end;
+end;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">[ Info: 10/1000
+[ Info: 20/1000
+[ Info: 30/1000
+[ Info: 40/1000
+[ Info: 50/1000
+[ Info: 60/1000
+[ Info: 70/1000
+[ Info: 80/1000
+[ Info: 90/1000
+[ Info: 100/1000
+[ Info: 110/1000
+[ Info: 120/1000
+[ Info: 130/1000
+[ Info: 140/1000
+[ Info: 150/1000
+[ Info: 160/1000
+[ Info: 170/1000
+[ Info: 180/1000
+[ Info: 190/1000
+[ Info: 200/1000
+[ Info: 210/1000
+[ Info: 220/1000
+[ Info: 230/1000
+[ Info: 240/1000
+[ Info: 250/1000
+[ Info: 260/1000
+[ Info: 270/1000
+[ Info: 280/1000
+[ Info: 290/1000
+[ Info: 300/1000
+[ Info: 310/1000
+[ Info: 320/1000
+[ Info: 330/1000
+[ Info: 340/1000
+[ Info: 350/1000
+[ Info: 360/1000
+[ Info: 370/1000
+[ Info: 380/1000
+[ Info: 390/1000
+[ Info: 400/1000
+[ Info: 410/1000
+[ Info: 420/1000
+[ Info: 430/1000
+[ Info: 440/1000
+[ Info: 450/1000
+[ Info: 460/1000
+[ Info: 470/1000
+[ Info: 480/1000
+[ Info: 490/1000
+[ Info: 500/1000
+[ Info: 510/1000
+[ Info: 520/1000
+[ Info: 530/1000
+[ Info: 540/1000
+[ Info: 550/1000
+[ Info: 560/1000
+[ Info: 570/1000
+[ Info: 580/1000
+[ Info: 590/1000
+[ Info: 600/1000
+[ Info: 610/1000
+[ Info: 620/1000
+[ Info: 630/1000
+[ Info: 640/1000
+[ Info: 650/1000
+[ Info: 660/1000
+[ Info: 670/1000
+[ Info: 680/1000
+[ Info: 690/1000
+[ Info: 700/1000
+[ Info: 710/1000
+[ Info: 720/1000
+[ Info: 730/1000
+[ Info: 740/1000
+[ Info: 750/1000
+[ Info: 760/1000
+[ Info: 770/1000
+[ Info: 780/1000
+[ Info: 790/1000
+[ Info: 800/1000
+[ Info: 810/1000
+[ Info: 820/1000
+[ Info: 830/1000
+[ Info: 840/1000
+[ Info: 850/1000
+[ Info: 860/1000
+[ Info: 870/1000
+[ Info: 880/1000
+[ Info: 890/1000
+[ Info: 900/1000
+[ Info: 910/1000
+[ Info: 920/1000
+[ Info: 930/1000
+[ Info: 940/1000
+[ Info: 950/1000
+[ Info: 960/1000
+[ Info: 970/1000
+[ Info: 980/1000
+[ Info: 990/1000
+[ Info: 1000/1000
+ 15.007090 seconds (33.67 M allocations: 7.257 GiB, 8.16% gc time, 25.36% compilation time)</code></pre><p>Here we have fitted a single parameter model to each count vector (a phylogenetic profile) independently. Note that the MLE will be zero under this model when the profile consists of ones only. The results of the above look like this</p><pre><code class="language-julia hljs">first(results, 10)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">10-element Vector{Tuple{Float64, Float64}}:
+ (-22.166663074268236, 0.09656456464512346)
+ (-24.69438549106619, 0.5010970827956874)
+ (-22.63610969812189, 0.29002267759742906)
+ (-22.49806861126835, 0.6980503796995863)
+ (-23.485123097196496, 1.0721987563046236)
+ (-20.65072764821289, 0.6336332029569388)
+ (-24.132043549383727, 0.5863538085743983)
+ (-19.54792662026289, 0.7387507977416689)
+ (-19.122396310095528, 0.3626784107179777)
+ (-10.752273172530012, 0.053150884293764106)</code></pre><p>alternatively we can use MAP estimation to regularize the <code>λ</code> estimates, for instance:</p><pre><code class="language-julia hljs">@model singlerate_ln(mat, bound, tree, rootprior) = begin
+    λ ~ LogNormal(log(0.2), 1)
+    θ = ConstantDLG(λ=λ, μ=λ, κ=zero(λ))
+    mat ~ PhyloBDP(θ, rootprior, tree, bound)
+end
 
-first(results, 10)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">10-element Vector{Tuple{Float64, Float64}}:
- (-22.166663074268232, 0.09656456472887674)
- (-24.694385491066186, 0.501097083071961)
- (-22.63610969812189, 0.2900226775974293)
- (-22.49806861126835, 0.6980503797013426)
- (-23.485123097196496, 1.0721987563046298)
- (-20.650727648212897, 0.6336332029570017)
- (-24.132043549383734, 0.5863538085751715)
- (-19.547926620262885, 0.738750797595795)
- (-19.12239631009554, 0.36267841050422867)
- (-10.752273172530009, 0.0531508842010594)</code></pre><h2 id="Bayesian-inference"><a class="docs-heading-anchor" href="#Bayesian-inference">Bayesian inference</a><a id="Bayesian-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Bayesian-inference" title="Permalink"></a></h2><p>Now we&#39;ll perform Bayesian inference using the No-U-turn sampler. Note that we&#39;ve defined an uninformative flat prior (<code>FlatPos(0.0)</code>), so we expect to find a posterior mean estimate for <code>λ</code> that coincides with the MLE.</p><pre><code class="language-julia hljs">chain = sample(model, NUTS(), 100)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Chains MCMC chain (100×13×1 Array{Float64, 3}):
+@time results_map = map(1:size(matrix, 1)) do i
+    i % 10 == 0 &amp;&amp; (@info &quot;$i/$(size(matrix, 1))&quot;)
+    x = matrix[i]
+    model = singlerate_ln(x, x.x[1], tree, rootprior)
+    mleresult = optimize(model, MAP())
+    mleresult.lp, mleresult.values[1]
+end;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">[ Info: 10/1000
+[ Info: 20/1000
+[ Info: 30/1000
+[ Info: 40/1000
+[ Info: 50/1000
+[ Info: 60/1000
+[ Info: 70/1000
+[ Info: 80/1000
+[ Info: 90/1000
+[ Info: 100/1000
+[ Info: 110/1000
+[ Info: 120/1000
+[ Info: 130/1000
+[ Info: 140/1000
+[ Info: 150/1000
+[ Info: 160/1000
+[ Info: 170/1000
+[ Info: 180/1000
+[ Info: 190/1000
+[ Info: 200/1000
+[ Info: 210/1000
+[ Info: 220/1000
+[ Info: 230/1000
+[ Info: 240/1000
+[ Info: 250/1000
+[ Info: 260/1000
+[ Info: 270/1000
+[ Info: 280/1000
+[ Info: 290/1000
+[ Info: 300/1000
+[ Info: 310/1000
+[ Info: 320/1000
+[ Info: 330/1000
+[ Info: 340/1000
+[ Info: 350/1000
+[ Info: 360/1000
+[ Info: 370/1000
+[ Info: 380/1000
+[ Info: 390/1000
+[ Info: 400/1000
+[ Info: 410/1000
+[ Info: 420/1000
+[ Info: 430/1000
+[ Info: 440/1000
+[ Info: 450/1000
+[ Info: 460/1000
+[ Info: 470/1000
+[ Info: 480/1000
+[ Info: 490/1000
+[ Info: 500/1000
+[ Info: 510/1000
+[ Info: 520/1000
+[ Info: 530/1000
+[ Info: 540/1000
+[ Info: 550/1000
+[ Info: 560/1000
+[ Info: 570/1000
+[ Info: 580/1000
+[ Info: 590/1000
+[ Info: 600/1000
+[ Info: 610/1000
+[ Info: 620/1000
+[ Info: 630/1000
+[ Info: 640/1000
+[ Info: 650/1000
+[ Info: 660/1000
+[ Info: 670/1000
+[ Info: 680/1000
+[ Info: 690/1000
+[ Info: 700/1000
+[ Info: 710/1000
+[ Info: 720/1000
+[ Info: 730/1000
+[ Info: 740/1000
+[ Info: 750/1000
+[ Info: 760/1000
+[ Info: 770/1000
+[ Info: 780/1000
+[ Info: 790/1000
+[ Info: 800/1000
+[ Info: 810/1000
+[ Info: 820/1000
+[ Info: 830/1000
+[ Info: 840/1000
+[ Info: 850/1000
+[ Info: 860/1000
+[ Info: 870/1000
+[ Info: 880/1000
+[ Info: 890/1000
+[ Info: 900/1000
+[ Info: 910/1000
+[ Info: 920/1000
+[ Info: 930/1000
+[ Info: 940/1000
+[ Info: 950/1000
+[ Info: 960/1000
+[ Info: 970/1000
+[ Info: 980/1000
+[ Info: 990/1000
+[ Info: 1000/1000
+  6.035149 seconds (13.16 M allocations: 1.743 GiB, 6.49% gc time, 62.63% compilation time)</code></pre><p>MAP is also faster, since it is numerically better behaved (the MLE of 0. being on the boundary of parameter space).</p><h2 id="Bayesian-inference"><a class="docs-heading-anchor" href="#Bayesian-inference">Bayesian inference</a><a id="Bayesian-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Bayesian-inference" title="Permalink"></a></h2><p>Now we&#39;ll perform Bayesian inference using the No-U-turn sampler. Note that we&#39;ve defined an uninformative flat prior (<code>FlatPos(0.0)</code>), so we expect to find a posterior mean estimate for <code>λ</code> that coincides with the MLE.</p><pre><code class="language-julia hljs">chain = sample(model, NUTS(), 100)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Chains MCMC chain (100×13×1 Array{Float64, 3}):
 
 Iterations        = 1:1:100
 Number of chains  = 1
@@ -48,18 +262,18 @@ Summary Statistics
   parameters      mean       std   naive_se      mcse       ess      rhat
       Symbol   Float64   Float64    Float64   Missing   Float64   Float64
 
-           λ    0.0961    0.0040     0.0004   missing   27.2095    1.0677
+           λ    0.0953    0.0038     0.0004   missing   43.1560    1.0518
 
 Quantiles
   parameters      2.5%     25.0%     50.0%     75.0%     97.5%
       Symbol   Float64   Float64   Float64   Float64   Float64
 
-           λ    0.0886    0.0934    0.0960    0.0985    0.1041
+           λ    0.0887    0.0928    0.0954    0.0976    0.1025
 </code></pre><p>Of course, it would be better to run such a chain for more iterations, e.g. 1000, but for the sake of time I&#39;m only taking a 100 samples here. The 95% uncertainty interval for the turnover rate can be obtained as</p><pre><code class="language-julia hljs">quantile(chain; q=[0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Quantiles
   parameters      2.5%     97.5%
       Symbol   Float64   Float64
 
-           λ    0.0886    0.1041
+           λ    0.0887    0.1025
 </code></pre><h2 id="Other-models"><a class="docs-heading-anchor" href="#Other-models">Other models</a><a id="Other-models-1"></a><a class="docs-heading-anchor-permalink" href="#Other-models" title="Permalink"></a></h2><p>It is straightforward to use the <a href="https://turing.ml/dev/">Turing.jl</a> model syntax (using the <code>@model</code> macro) in combination with the various rates models and root priors defined in DeadBird (<code>ConstantDLG</code>, <code>DLG</code>, <code>DLGWGM</code>, <code>ShiftedBetaGeometric</code>, ...) to specify complicated models. A not so complicated example would be the following. First we filter the data to only allow for non-extinct families:</p><pre><code class="language-julia hljs">nonextinct = filter(x-&gt;all(Array(x) .&gt; 0), data);</code></pre><p>We will model the excess number of genes, i.e. the number of extra (duplicated) genes <em>per</em> family, instead of the total number of genes.</p><pre><code class="language-julia hljs">excessgenes = nonextinct .- 1;</code></pre><p>Again we construct a DAG object</p><pre><code class="language-julia hljs">dag, bound = CountDAG(excessgenes, tree)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(dag = CountDAG({616, 1204} directed simple Int64 graph), bound = 72)</code></pre><p>The model we specify is a linear birth-death and immigration process with immigration (gain) rate equal to the duplication rate, <code>κ = λ</code>, and loss rate <code>μ</code>. This corresponds to a model where genes duplicate at rate λ, (note that a <code>0 -&gt; 1</code> transition is also a duplication here since the zero state corresponds to a single copy family), and where <em>duplicated genes</em> get lost at rate <code>μ</code>. We assume <code>λ &lt; μ</code>, in which case there is a geometric stationary distribution with mean <code>1 - λ/μ</code> for the excess number of genes in a family.</p><pre><code class="language-julia hljs">bound01(η) = η &lt;= zero(η) ? zero(η) + 1e-16 : η &gt;= one(η) ? one(η) - 1e-16 : η
 
 @model nonextinctmodel(dag, bound, tree) = begin
@@ -82,35 +296,35 @@ Summary Statistics
   parameters      mean       std   naive_se      mcse       ess      rhat
       Symbol   Float64   Float64    Float64   Missing   Float64   Float64
 
-           η    0.8825    0.0063     0.0006   missing   58.0663    0.9904
-           μ    1.0115    0.0601     0.0060   missing   68.5776    0.9936
+           η    0.8818    0.0061     0.0006   missing   44.1066    0.9985
+           μ    1.0018    0.0616     0.0062   missing   47.9508    1.0175
 
 Quantiles
   parameters      2.5%     25.0%     50.0%     75.0%     97.5%
       Symbol   Float64   Float64   Float64   Float64   Float64
 
-           η    0.8711    0.8771    0.8827    0.8869    0.8944
-           μ    0.8937    0.9793    1.0074    1.0506    1.1201
+           η    0.8715    0.8772    0.8817    0.8865    0.8928
+           μ    0.8980    0.9578    1.0023    1.0434    1.1191
 </code></pre><p>Get the posterior as a dataframe</p><pre><code class="language-julia hljs">pdf = DataFrame(chain)
 μs = pdf[:, :μ]
 λs = μs .* (1 .- pdf[:,:η])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">100-element Vector{Float64}:
- 0.11773044678760058
- 0.12624286151435152
- 0.10799109739360023
- 0.12507140515325765
- 0.1090149110501045
- 0.11145219892607951
- 0.11145219892607951
- 0.12086953429010903
- 0.12903022667538233
- 0.10528695680791487
+ 0.11146975963916175
+ 0.10906818321660615
+ 0.11765909519346371
+ 0.11805565365881292
+ 0.11696391165435056
+ 0.11591291906429504
+ 0.11591291906429504
+ 0.11890776847168741
+ 0.11954953654177786
+ 0.11277132084679321
  ⋮
- 0.128177426544124
- 0.12058342813696489
- 0.11355319821658226
- 0.11355319821658226
- 0.12629237626120826
- 0.1256855619542273
- 0.12206711807108706
- 0.1221081356645148
- 0.11025811174993962</code></pre><p>The marginal posterior mean duplication rate (and 95% uncertainty interval) is</p><pre><code class="language-julia hljs">mean(λs), quantile(λs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(0.1187410309714452, [0.10740118999803998, 0.13211472399707888])</code></pre><p>The marginal posterior mean loss rate <em>per duplicated gene</em> is</p><pre><code class="language-julia hljs">mean(μs), quantile(μs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(1.0115031217857149, [0.8937345097400052, 1.1201154271542961])</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Index</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.12 on <span class="colophon-date" title="Thursday 27 January 2022 10:59">Thursday 27 January 2022</span>. Using Julia version 1.7.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 0.11581137098966252
+ 0.11108414238281142
+ 0.12367837031142703
+ 0.11883223019451133
+ 0.11626403941810533
+ 0.11108193132791708
+ 0.12464330126754311
+ 0.10979376463741101
+ 0.12178628604833494</code></pre><p>The marginal posterior mean duplication rate (and 95% uncertainty interval) is</p><pre><code class="language-julia hljs">mean(λs), quantile(λs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(0.1182284702618578, [0.10718703821332727, 0.1312999472431907])</code></pre><p>The marginal posterior mean loss rate <em>per duplicated gene</em> is</p><pre><code class="language-julia hljs">mean(μs), quantile(μs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(1.0017514768827385, [0.898036042921607, 1.1190831043328426])</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Index</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.12 on <span class="colophon-date" title="Thursday 27 January 2022 11:19">Thursday 27 January 2022</span>. Using Julia version 1.7.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
