@@ -69,7 +69,6 @@ matrix, bound = ProfileMatrix(data, tree)
 end
 
 @time results = map(1:size(matrix, 1)) do i
-    i % 10 == 0 && (@info "$i/$(size(matrix, 1))")
     x = matrix[i]
     model = singlerate(x, x.x[1], tree, rootprior)
     mleresult = optimize(model, MLE())
@@ -87,13 +86,12 @@ first(results, 10)
 # instance:
 
 @model singlerate_ln(mat, bound, tree, rootprior) = begin
-    λ ~ LogNormal(log(0.2), 1)
+    λ ~ LogNormal(log(0.1), 1)
     θ = ConstantDLG(λ=λ, μ=λ, κ=zero(λ))
     mat ~ PhyloBDP(θ, rootprior, tree, bound)
 end
 
 @time results_map = map(1:size(matrix, 1)) do i
-    i % 10 == 0 && (@info "$i/$(size(matrix, 1))")
     x = matrix[i]
     model = singlerate_ln(x, x.x[1], tree, rootprior)
     mleresult = optimize(model, MAP())
