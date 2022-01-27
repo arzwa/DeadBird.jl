@@ -23,112 +23,11 @@ A  │
 end
 
 @time results = map(1:size(matrix, 1)) do i
-    i % 10 == 0 &amp;&amp; (@info &quot;$i/$(size(matrix, 1))&quot;)
     x = matrix[i]
     model = singlerate(x, x.x[1], tree, rootprior)
     mleresult = optimize(model, MLE())
     mleresult.lp, mleresult.values[1]
-end;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">[ Info: 10/1000
-[ Info: 20/1000
-[ Info: 30/1000
-[ Info: 40/1000
-[ Info: 50/1000
-[ Info: 60/1000
-[ Info: 70/1000
-[ Info: 80/1000
-[ Info: 90/1000
-[ Info: 100/1000
-[ Info: 110/1000
-[ Info: 120/1000
-[ Info: 130/1000
-[ Info: 140/1000
-[ Info: 150/1000
-[ Info: 160/1000
-[ Info: 170/1000
-[ Info: 180/1000
-[ Info: 190/1000
-[ Info: 200/1000
-[ Info: 210/1000
-[ Info: 220/1000
-[ Info: 230/1000
-[ Info: 240/1000
-[ Info: 250/1000
-[ Info: 260/1000
-[ Info: 270/1000
-[ Info: 280/1000
-[ Info: 290/1000
-[ Info: 300/1000
-[ Info: 310/1000
-[ Info: 320/1000
-[ Info: 330/1000
-[ Info: 340/1000
-[ Info: 350/1000
-[ Info: 360/1000
-[ Info: 370/1000
-[ Info: 380/1000
-[ Info: 390/1000
-[ Info: 400/1000
-[ Info: 410/1000
-[ Info: 420/1000
-[ Info: 430/1000
-[ Info: 440/1000
-[ Info: 450/1000
-[ Info: 460/1000
-[ Info: 470/1000
-[ Info: 480/1000
-[ Info: 490/1000
-[ Info: 500/1000
-[ Info: 510/1000
-[ Info: 520/1000
-[ Info: 530/1000
-[ Info: 540/1000
-[ Info: 550/1000
-[ Info: 560/1000
-[ Info: 570/1000
-[ Info: 580/1000
-[ Info: 590/1000
-[ Info: 600/1000
-[ Info: 610/1000
-[ Info: 620/1000
-[ Info: 630/1000
-[ Info: 640/1000
-[ Info: 650/1000
-[ Info: 660/1000
-[ Info: 670/1000
-[ Info: 680/1000
-[ Info: 690/1000
-[ Info: 700/1000
-[ Info: 710/1000
-[ Info: 720/1000
-[ Info: 730/1000
-[ Info: 740/1000
-[ Info: 750/1000
-[ Info: 760/1000
-[ Info: 770/1000
-[ Info: 780/1000
-[ Info: 790/1000
-[ Info: 800/1000
-[ Info: 810/1000
-[ Info: 820/1000
-[ Info: 830/1000
-[ Info: 840/1000
-[ Info: 850/1000
-[ Info: 860/1000
-[ Info: 870/1000
-[ Info: 880/1000
-[ Info: 890/1000
-[ Info: 900/1000
-[ Info: 910/1000
-[ Info: 920/1000
-[ Info: 930/1000
-[ Info: 940/1000
-[ Info: 950/1000
-[ Info: 960/1000
-[ Info: 970/1000
-[ Info: 980/1000
-[ Info: 990/1000
-[ Info: 1000/1000
- 15.007090 seconds (33.67 M allocations: 7.257 GiB, 8.16% gc time, 25.36% compilation time)</code></pre><p>Here we have fitted a single parameter model to each count vector (a phylogenetic profile) independently. Note that the MLE will be zero under this model when the profile consists of ones only. The results of the above look like this</p><pre><code class="language-julia hljs">first(results, 10)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">10-element Vector{Tuple{Float64, Float64}}:
+end;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi"> 16.429011 seconds (32.63 M allocations: 7.200 GiB, 7.79% gc time, 22.74% compilation time)</code></pre><p>Here we have fitted a single parameter model to each count vector (a phylogenetic profile) independently. Note that the MLE will be zero under this model when the profile consists of ones only. The results of the above look like this</p><pre><code class="language-julia hljs">first(results, 10)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">10-element Vector{Tuple{Float64, Float64}}:
  (-22.166663074268236, 0.09656456464512346)
  (-24.69438549106619, 0.5010970827956874)
  (-22.63610969812189, 0.29002267759742906)
@@ -139,118 +38,17 @@ end;</code></pre><pre class="documenter-example-output"><code class="nohighlight
  (-19.54792662026289, 0.7387507977416689)
  (-19.122396310095528, 0.3626784107179777)
  (-10.752273172530012, 0.053150884293764106)</code></pre><p>alternatively we can use MAP estimation to regularize the <code>λ</code> estimates, for instance:</p><pre><code class="language-julia hljs">@model singlerate_ln(mat, bound, tree, rootprior) = begin
-    λ ~ LogNormal(log(0.2), 1)
+    λ ~ LogNormal(log(0.1), 1)
     θ = ConstantDLG(λ=λ, μ=λ, κ=zero(λ))
     mat ~ PhyloBDP(θ, rootprior, tree, bound)
 end
 
 @time results_map = map(1:size(matrix, 1)) do i
-    i % 10 == 0 &amp;&amp; (@info &quot;$i/$(size(matrix, 1))&quot;)
     x = matrix[i]
     model = singlerate_ln(x, x.x[1], tree, rootprior)
     mleresult = optimize(model, MAP())
     mleresult.lp, mleresult.values[1]
-end;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">[ Info: 10/1000
-[ Info: 20/1000
-[ Info: 30/1000
-[ Info: 40/1000
-[ Info: 50/1000
-[ Info: 60/1000
-[ Info: 70/1000
-[ Info: 80/1000
-[ Info: 90/1000
-[ Info: 100/1000
-[ Info: 110/1000
-[ Info: 120/1000
-[ Info: 130/1000
-[ Info: 140/1000
-[ Info: 150/1000
-[ Info: 160/1000
-[ Info: 170/1000
-[ Info: 180/1000
-[ Info: 190/1000
-[ Info: 200/1000
-[ Info: 210/1000
-[ Info: 220/1000
-[ Info: 230/1000
-[ Info: 240/1000
-[ Info: 250/1000
-[ Info: 260/1000
-[ Info: 270/1000
-[ Info: 280/1000
-[ Info: 290/1000
-[ Info: 300/1000
-[ Info: 310/1000
-[ Info: 320/1000
-[ Info: 330/1000
-[ Info: 340/1000
-[ Info: 350/1000
-[ Info: 360/1000
-[ Info: 370/1000
-[ Info: 380/1000
-[ Info: 390/1000
-[ Info: 400/1000
-[ Info: 410/1000
-[ Info: 420/1000
-[ Info: 430/1000
-[ Info: 440/1000
-[ Info: 450/1000
-[ Info: 460/1000
-[ Info: 470/1000
-[ Info: 480/1000
-[ Info: 490/1000
-[ Info: 500/1000
-[ Info: 510/1000
-[ Info: 520/1000
-[ Info: 530/1000
-[ Info: 540/1000
-[ Info: 550/1000
-[ Info: 560/1000
-[ Info: 570/1000
-[ Info: 580/1000
-[ Info: 590/1000
-[ Info: 600/1000
-[ Info: 610/1000
-[ Info: 620/1000
-[ Info: 630/1000
-[ Info: 640/1000
-[ Info: 650/1000
-[ Info: 660/1000
-[ Info: 670/1000
-[ Info: 680/1000
-[ Info: 690/1000
-[ Info: 700/1000
-[ Info: 710/1000
-[ Info: 720/1000
-[ Info: 730/1000
-[ Info: 740/1000
-[ Info: 750/1000
-[ Info: 760/1000
-[ Info: 770/1000
-[ Info: 780/1000
-[ Info: 790/1000
-[ Info: 800/1000
-[ Info: 810/1000
-[ Info: 820/1000
-[ Info: 830/1000
-[ Info: 840/1000
-[ Info: 850/1000
-[ Info: 860/1000
-[ Info: 870/1000
-[ Info: 880/1000
-[ Info: 890/1000
-[ Info: 900/1000
-[ Info: 910/1000
-[ Info: 920/1000
-[ Info: 930/1000
-[ Info: 940/1000
-[ Info: 950/1000
-[ Info: 960/1000
-[ Info: 970/1000
-[ Info: 980/1000
-[ Info: 990/1000
-[ Info: 1000/1000
-  6.035149 seconds (13.16 M allocations: 1.743 GiB, 6.49% gc time, 62.63% compilation time)</code></pre><p>MAP is also faster, since it is numerically better behaved (the MLE of 0. being on the boundary of parameter space).</p><h2 id="Bayesian-inference"><a class="docs-heading-anchor" href="#Bayesian-inference">Bayesian inference</a><a id="Bayesian-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Bayesian-inference" title="Permalink"></a></h2><p>Now we&#39;ll perform Bayesian inference using the No-U-turn sampler. Note that we&#39;ve defined an uninformative flat prior (<code>FlatPos(0.0)</code>), so we expect to find a posterior mean estimate for <code>λ</code> that coincides with the MLE.</p><pre><code class="language-julia hljs">chain = sample(model, NUTS(), 100)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Chains MCMC chain (100×13×1 Array{Float64, 3}):
+end;</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">  6.552954 seconds (12.76 M allocations: 1.659 GiB, 6.39% gc time, 61.87% compilation time)</code></pre><p>MAP is also faster, since it is numerically better behaved (the MLE of 0. being on the boundary of parameter space).</p><h2 id="Bayesian-inference"><a class="docs-heading-anchor" href="#Bayesian-inference">Bayesian inference</a><a id="Bayesian-inference-1"></a><a class="docs-heading-anchor-permalink" href="#Bayesian-inference" title="Permalink"></a></h2><p>Now we&#39;ll perform Bayesian inference using the No-U-turn sampler. Note that we&#39;ve defined an uninformative flat prior (<code>FlatPos(0.0)</code>), so we expect to find a posterior mean estimate for <code>λ</code> that coincides with the MLE.</p><pre><code class="language-julia hljs">chain = sample(model, NUTS(), 100)</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">Chains MCMC chain (100×13×1 Array{Float64, 3}):
 
 Iterations        = 1:1:100
 Number of chains  = 1
@@ -327,4 +125,4 @@ Quantiles
  0.11108193132791708
  0.12464330126754311
  0.10979376463741101
- 0.12178628604833494</code></pre><p>The marginal posterior mean duplication rate (and 95% uncertainty interval) is</p><pre><code class="language-julia hljs">mean(λs), quantile(λs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(0.1182284702618578, [0.10718703821332727, 0.1312999472431907])</code></pre><p>The marginal posterior mean loss rate <em>per duplicated gene</em> is</p><pre><code class="language-julia hljs">mean(μs), quantile(μs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(1.0017514768827385, [0.898036042921607, 1.1190831043328426])</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Index</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.12 on <span class="colophon-date" title="Thursday 27 January 2022 11:19">Thursday 27 January 2022</span>. Using Julia version 1.7.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
+ 0.12178628604833494</code></pre><p>The marginal posterior mean duplication rate (and 95% uncertainty interval) is</p><pre><code class="language-julia hljs">mean(λs), quantile(λs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(0.1182284702618578, [0.10718703821332727, 0.1312999472431907])</code></pre><p>The marginal posterior mean loss rate <em>per duplicated gene</em> is</p><pre><code class="language-julia hljs">mean(μs), quantile(μs, [0.025, 0.975])</code></pre><pre class="documenter-example-output"><code class="nohighlight hljs ansi">(1.0017514768827385, [0.898036042921607, 1.1190831043328426])</code></pre><hr/><p><em>This page was generated using <a href="https://github.com/fredrikekre/Literate.jl">Literate.jl</a>.</em></p></article><nav class="docs-footer"><a class="docs-footer-prevpage" href="../">« Index</a><a class="docs-footer-nextpage" href="../api/">API »</a><div class="flexbox-break"></div><p class="footer-message">Powered by <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> and the <a href="https://julialang.org/">Julia Programming Language</a>.</p></nav></div><div class="modal" id="documenter-settings"><div class="modal-background"></div><div class="modal-card"><header class="modal-card-head"><p class="modal-card-title">Settings</p><button class="delete"></button></header><section class="modal-card-body"><p><label class="label">Theme</label><div class="select"><select id="documenter-themepicker"><option value="documenter-light">documenter-light</option><option value="documenter-dark">documenter-dark</option></select></div></p><hr/><p>This document was generated with <a href="https://github.com/JuliaDocs/Documenter.jl">Documenter.jl</a> version 0.27.12 on <span class="colophon-date" title="Thursday 27 January 2022 11:27">Thursday 27 January 2022</span>. Using Julia version 1.7.1.</p></section><footer class="modal-card-foot"></footer></div></div></div></body></html>
