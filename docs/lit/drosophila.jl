@@ -8,7 +8,7 @@
 # Load the required packages
 using DeadBird
 using Distributions, Turing, CSV, DataFrames, NewickTree, Optim
-using Random; Random.seed!(671);
+using Random; Random.seed!(761);
 
 # Load the data
 datadir = joinpath(@__DIR__, "../../example/drosophila")
@@ -42,10 +42,14 @@ dag, bound = CountDAG(data, tree)
 end
 
 # ## Maximum likelihood inference
+#
+# First we show how to conduct MLE of a single parameter model for the entire
+# data (i.e. we estimate a genome-wide parameter) using the `CountDAG` data
+# structure.
 model = singlerate(dag, bound, tree, rootprior)
 @time mleresult = optimize(model, MLE())
 
-# For the complete data set, this takes about 10 seconds. 
+# For the complete data set of >10000 families, this takes about 10 seconds. 
 
 # It is straightforward to adapt the model definition to allow for different
 # duplication and loss rates, non-zero gain rates (`κ`) or different root
@@ -72,7 +76,32 @@ end
     mleresult.lp, mleresult.values[1]
 end;
 
+# Here we have fitted a single parameter model to each count vector (a
+# phylogenetic profile) independently. Note that the MLE will be zero under
+# this model when the profile consists of ones only. The results of the above
+# look like this
+
 first(results, 10)
+
+# alternatively we can use MAP estimation to regularize the `λ` estimates, for
+# instance:
+
+@model singlerate_ln(mat, bound, tree, rootprior) = begin
+    λ ~ LogNormal(log(0.2), 1)
+    θ = ConstantDLG(λ=λ, μ=λ, κ=zero(λ))
+    mat ~ PhyloBDP(θ, rootprior, tree, bound)
+end
+
+@time results_map = map(1:size(matrix, 1)) do i
+    i % 10 == 0 && (@info "$i/$(size(matrix, 1))")
+    x = matrix[i]
+    model = singlerate_ln(x, x.x[1], tree, rootprior)
+    mleresult = optimize(model, MAP())
+    mleresult.lp, mleresult.values[1]
+end;
+
+# MAP is also faster, since it is numerically better behaved (the MLE of 0.
+# being on the boundary of parameter space).
 
 # ## Bayesian inference
 # Now we'll perform Bayesian inference using the No-U-turn sampler. Note that
