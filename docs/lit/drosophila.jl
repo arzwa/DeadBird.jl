@@ -30,7 +30,8 @@ m = mean(filter(x->x>0,Matrix(data)))
 η = 1/m
 rootprior = ShiftedGeometric(η)
 
-# We will use the DAG data structure (most efficient).
+# We will use the DAG data structure (most efficient, but admits no
+# family-specific models).
 dag, bound = CountDAG(data, tree)
 
 # We will define a Turing model for this simple problem
@@ -49,6 +50,29 @@ model = singlerate(dag, bound, tree, rootprior)
 # It is straightforward to adapt the model definition to allow for different
 # duplication and loss rates, non-zero gain rates (`κ`) or different root
 # priors. 
+
+# Alternatively we could use the ProfileMatrix, which admits models that deal
+# with variation across families. We can also use this to fit models
+# independently across families.
+# Here we will estimate the MLE of a single turnover rate for 100 families
+# independently.
+matrix, bound = ProfileMatrix(data, tree)
+
+@model singlerate(mat, bound, tree, rootprior) = begin
+    λ ~ Turing.FlatPos(0.)
+    θ = ConstantDLG(λ=λ, μ=λ, κ=zero(λ))
+    mat ~ PhyloBDP(θ, rootprior, tree, bound)
+end
+
+@time results = map(1:size(matrix, 1)) do i
+    i % 10 == 0 && (@info "$i/$(size(matrix, 1))")
+    x = matrix[i]
+    model = singlerate(x, x.x[1], tree, rootprior)
+    mleresult = optimize(model, MLE())
+    mleresult.lp, mleresult.values[1]
+end;
+
+first(results, 10)
 
 # ## Bayesian inference
 # Now we'll perform Bayesian inference using the No-U-turn sampler. Note that
