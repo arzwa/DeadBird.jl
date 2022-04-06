@@ -11,7 +11,8 @@ using Distributions, Turing, CSV, DataFrames, NewickTree, Optim
 using Random; Random.seed!(761);
 
 # Load the data
-datadir = joinpath(@__DIR__, "../../example/drosophila")
+#datadir = joinpath(@__DIR__, "../../example/drosophila")
+datadir = joinpath(@__DIR__, "example/drosophila")
 tree = readnw(readline(joinpath(datadir, "tree.nw")))
 data = CSV.read(joinpath(datadir, "counts-oib.csv"), DataFrame);
 
@@ -74,6 +75,7 @@ end
     mleresult = optimize(model, MLE())
     mleresult.lp, mleresult.values[1]
 end;
+
 
 # Here we have fitted a single parameter model to each count vector (a
 # phylogenetic profile) independently. Note that the MLE will be zero under

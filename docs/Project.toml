@@ -1,10 +1,13 @@
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 DataFrames = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+DeadBird = "a6db34b6-ea8f-496d-a49f-6ef7ed1dec48"
 Distributions = "31c24e10-a181-5473-b8eb-7969acd0382f"
 Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
 Literate = "98b081ad-f1c9-55d3-8b20-4c87d4299306"
 NewickTree = "b0a14db8-6308-4ebc-8917-f72cd81f5094"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
+Preferences = "21216c6a-2e73-6563-6e65-726566657250"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Turing = "fce5fe82-541a-59a6-adf8-730c64b5f9a0"
