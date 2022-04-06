@@ -213,27 +213,27 @@ readtree = readnw ∘ readline
         end
 
         # intensive one, this was a source of numerical issues previously
-        @testset "Gradients for large families" begin
-            function gradfun(x, data)
-                r = ConstantDLG(λ=x[1], μ=x[2], κ=zero(eltype(x)))
-                p = ShiftedGeometric(1/1.5)
-                m = PhyloBDP(r, p, tr, bound)
-                return logpdf(m, data)
-            end
-            for i=1:20
-                res = map(1:5) do j
-                    dag, bound = CountDAG(df[i:i,:], tr)
-                    mat, bound = ProfileMatrix(df[i:i,:], tr)
-                    y = exp.(round.(randn(2), digits=2))
-                    ∇ℓd = ForwardDiff.gradient(x->gradfun(x, dag), y)
-                    ∇ℓp = ForwardDiff.gradient(x->gradfun(x, mat), y)
-                    @test all(isfinite.(∇ℓd))
-                    @test all(isfinite.(∇ℓp))
-                    (y, ∇ℓd, ∇ℓp)
-                end
-                #@info "∇" res
-            end
-        end
+        #@testset "Gradients for large families" begin
+        #    function gradfun(x, data)
+        #        r = ConstantDLG(λ=x[1], μ=x[2], κ=zero(eltype(x)))
+        #        p = ShiftedGeometric(1/1.5)
+        #        m = PhyloBDP(r, p, tr, bound)
+        #        return logpdf(m, data)
+        #    end
+        #    for i=1:20
+        #        res = map(1:5) do j
+        #            dag, bound = CountDAG(df[i:i,:], tr)
+        #            mat, bound = ProfileMatrix(df[i:i,:], tr)
+        #            y = exp.(round.(randn(2), digits=2))
+        #            ∇ℓd = ForwardDiff.gradient(x->gradfun(x, dag), y)
+        #            ∇ℓp = ForwardDiff.gradient(x->gradfun(x, mat), y)
+        #            @test all(isfinite.(∇ℓd))
+        #            @test all(isfinite.(∇ℓp))
+        #            (y, ∇ℓd, ∇ℓp)
+        #        end
+        #        #@info "∇" res
+        #    end
+        #end
     end
 
     @testset "Ancestral states" begin

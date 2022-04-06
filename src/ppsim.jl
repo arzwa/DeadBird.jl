@@ -14,7 +14,7 @@ end
 
 Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N=$(x.N), n=$(x.n))")
 
-function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=true)
+function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=false)
     sp = sp == :all ? collect(keys(x.data)) : sp
     rows = []
     for s in sp, n in xs
@@ -44,6 +44,17 @@ end
 
 _getmean(pdf::Vector, xmin) = sum([(i-1+xmin)*x for (i,x) in enumerate(pdf)])
 _getmean(pdf::Matrix, xmin) = _getmean(vec(mapslices(mean, pdf, dims=2)), xmin)
+
+function printfdf(df)
+    numcols = names(df)[eltype.(eachcol(df)) .== Float64]
+    trfun = x->typeof(x) == Float64 ? (@sprintf "%.3f" x) : 
+        "("*join([(@sprintf "%.3f" y) for y in x], ", ")*")"
+    ddf = deepcopy(df)
+    for col in numcols
+        ddf = DataFrames.transform(ddf, col => ByRow(trfun) => col)
+    end
+    ddf
+end
 
 """
     simulate(mfun::Function, data::DataFrame, chain, N)
@@ -172,7 +183,7 @@ end
     taxa = haskey(plotattributes, :taxa) ? plotattributes[:taxa] : nothing
     xguide --> "\$n\$"
     yguide --> "\$\\log_{10}p\$"
-    guidefont --> 8
+    guidefont --> 10
     legend --> false
     grid   --> false
     layout --> length(data) 
@@ -195,11 +206,11 @@ end
             @series begin
                 subplot := i
                 title := sp
-                titlefontfamily --> :italic
-                titlefont --> 7
+                titlefontfamily --> "helvetica oblique"
+                titlefont --> 10
                 titlelocation --> :left
                 seriestype := :path
-                seriescolor --> :black
+                seriescolor --> :black 
                 fillalpha   --> 0.2
                 #ribbon --> (y[:,2], y[:,3])
                 #x, y[:,1]
@@ -212,13 +223,13 @@ end
             @series begin
                 subplot := i
                 title := sp
-                titlefontfamily --> :italic
-                titlefont --> 7
+                titlefontfamily --> "helvetica oblique"
+                titlefont --> 10
                 titlelocation --> :left
                 markershape --> :circle
                 markersize  --> 3
                 seriestype := :scatter
-                seriescolor --> c
+                seriescolor := c
                 x = collect(1:length(v)) .+ 0.5
                 x, v
             end
@@ -234,7 +245,7 @@ end
     xguide --> "\$n\$"
     yguide --> "\$\\epsilon\$"
     layout --> length(data)
-    xscale --> :log10
+    xscale --> :identity
     for (i,(k,v)) in enumerate(data)
         @series begin
             seriestype := :scatter
