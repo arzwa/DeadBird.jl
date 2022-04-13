@@ -2,7 +2,7 @@ using CSV, DataFrames, DeadBird, NewickTree, Test, Distributions
 using DeadBird: ExcessConstantDLGWGM, ConstantDLGWGM, ConstantDLG 
 using DeadBird: loglikelihood
 
-const datadir = joinpath(@__DIR__, "../example")
+const datadir = joinpath(@__DIR__, "example")
 readtree = readnw ∘ readline
 
 # works for default, not excess model...
@@ -91,7 +91,7 @@ end
     μ ~ Turing.FlatPos(0.)
     λ ~ Turing.FlatPos(0.)
     q ~ Beta()
-    r = ConstantDLGWGM(λ=λ, μ=μ, κ=zero(λ), q=Dict(0x0018 => q)); 
+    r = ConstantDLGWGM(λ=λ, μ=μ, κ=zero(λ + 1e-10), q=Dict(0x0018 => q)); 
     X ~ model(rates=r)
 end
 
@@ -132,7 +132,7 @@ model = PhyloBDP(ConstantDLG(λ=0.1, μ=1.7, κ=0.1), rootp, tr, 1, cond=:none)
 sdata = simulate(model, 1000);
 dag, bound = CountDAG(sdata, model)
 model = model(bound=bound)
-chain = sample(nowgd(model, dag), NUTS(), 1000) 
+chain = sample(nowgd_excess(model, dag), NUTS(), 1000) 
 sims = simulate(mfun0(chain), sdata, chain)
 plot(sims)
 
@@ -149,12 +149,12 @@ chain = sample(yeastwgd_total(model, dag), NUTS(), 500)
 # with WGD, excess
 rootp = BetaGeometric(0.94, 4.)
 n = getlca(tr, "Scerevisiae", "Vpolyspora")
-model = PhyloBDP(ExcessConstantDLGWGM(λ=0.1, μ=1.5, κ=0.1), rootp, tr, 1, cond=:none)
+model = PhyloBDP(ConstantDLGWGM(λ=0.1, μ=1.5, κ=0.1, excess=true), rootp, tr, 1, cond=:none)
 model = DeadBird.insertwgms(model, id(n)=>(0.0229, 2, 1.));
 sdata = simulate(model, 200);
 dag, bound = CountDAG(sdata, model)
 model = model(bound=bound)                    
-chain = sample(yeastwgd(model, dag), NUTS(), 1000) 
+chain = sample(yeastwgd_excess(model, dag), NUTS(), 1000) 
 sims = simulate(mfun1(chain, model), sdata, chain)
 
 # The actual data

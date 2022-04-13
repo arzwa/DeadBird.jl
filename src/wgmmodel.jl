@@ -28,8 +28,9 @@ to efficiently add and remove single WGM events...
 
 ```julia
 x = DeadBird.example_data()
-m = PhyloBDP(RatesModel(ConstantDLGWGD(q=ones(9))), x.tr, 5)
-insertwgms(m, Dict(3=>[(0.1, 2)], 2=>[(0.3, 4)]))
+p = ShiftedGeometric(0.75)
+M = PhyloBDP(ConstantDLGWGM(λ=0.1, μ=0.1, κ=0.), p, ex.tr, 10)
+DeadBird.insertwgms(M, 3=>(0.1, 2, 0.99))
 ```
 """
 function insertwgms(model::PhyloBDP{T}, wgms...) where T
@@ -65,7 +66,7 @@ end
 
 function collect_and_order(pairs)
     d = Dict()
-    for p in pairs
+    for p in collect(pairs)
         !haskey(d, first(p)) ? 
             d[first(p)] = [last(p)] : 
             push!(d[first(p)], last(p))
