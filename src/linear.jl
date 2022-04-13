@@ -1,8 +1,7 @@
 # Likelihood and other methods specific to the linear model
-# Actually the matter is probably about the branching property than about
-# linearity, e.g. rates that grow quadratic with the population size might also
-# admit a Csuros-Miklos like algorithm. At any rate, only methods for the
-# linear BDP are implemented here.
+
+# We might get speedups by implementing custom frules for ChainRules, and get
+# them to work with ForwardDiff...
 
 # NOTE: when having family-specific rates, we might get a performance boost
 # when considering the node count bound for each family separately. Since the

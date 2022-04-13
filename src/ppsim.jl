@@ -37,7 +37,7 @@ function _process_taxon(x, abbr=true)
 end
 
 function exttable(x::PPSim, kmin=1)
-    map([:extinct, :rejected]) do s
+    map(["extinct", "rejected"]) do s
         (quantity="# $s", expectation=_getmean(x.sims[s], kmin))
     end |> DataFrame
 end
@@ -181,6 +181,8 @@ end
     @unpack data, sims = pps
     scat = haskey(plotattributes, :scat) ? plotattributes[:scat] : true
     taxa = haskey(plotattributes, :taxa) ? plotattributes[:taxa] : nothing
+    order = haskey(plotattributes, :order) ? plotattributes[:order] : sort(collect(keys(data)))
+    mcolor = haskey(plotattributes, :markercolor) ? plotattributes[:markercolor] : :black
     xguide --> "\$n\$"
     yguide --> "\$\\log_{10}p\$"
     guidefont --> 10
@@ -191,7 +193,8 @@ end
     ϵ = 1/2pps.N
     ylims --> (log10(ϵ/5), 0.2)
     
-    for (i, (k,v)) in enumerate(data)
+    for (i, k) in enumerate(order)
+        v = data[k]
         sp = isnothing(taxa) ? 
             join(split(string(k), "_"), " ") : 
             taxa[k]
@@ -200,7 +203,7 @@ end
         v[v .== 0.] .= ϵ 
         v = log10.(v)
         c = [j > size(Qs)[1] || !(Qs[j,1] - Qs[j,2] < v[j] < Qs[j,1] + Qs[j,3]) ? 
-             :white : :black for j=1:length(v)]
+             :white : mcolor for j=1:length(v)]
 
         for j=1:2:length(x)-1
             @series begin

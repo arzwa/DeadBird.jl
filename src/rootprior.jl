@@ -133,7 +133,7 @@ function Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric)
     return rand(Geometric(p)) + 1
 end
 
-Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric, n::Int) = map(rand(rng, d), 1:n)
+Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric, n::Int) = map(i->rand(rng, d), 1:n)
 Distributions.logpdf(d::ShiftedBetaGeometric, k) = logp(d.α, d.β, k - 1)
 
 """

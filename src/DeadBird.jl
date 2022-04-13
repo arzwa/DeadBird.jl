@@ -3,7 +3,7 @@ module DeadBird
 using NewickTree
 using Parameters
 using Distributions
-using LightGraphs
+using Graphs
 using StatsBase
 using StatsFuns
 using DataFrames
@@ -29,6 +29,7 @@ include("ppsim.jl")
 include("utils.jl")
 include("ancestral.jl")
 include("clocks.jl")
+include("yulesimon.jl")
 
 """
     example_data()

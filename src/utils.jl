@@ -77,3 +77,21 @@ function discretize(d, K)
     xs .* (mean(d)*K/sum(xs))  # rescale by factor mean(d)/mean(xs)
 end
 
+expit(x) = exp(x)/(1+exp(x))
+
+"""
+    discretebeta(η, ζ, K)
+
+Get `K` evenly spaced quantiles from the Beta distribution approximated by a
+Normal distribution in logit space. We use the normal approximation so that
+this is compatible with AD. This doesn't work too well when η is close to 0/1...
+See also [here](https://stats.stackexchange.com/a/568856).
+"""
+function discretebeta(η, ζ, K)
+    α = η*ζ
+    β = (1-η)*ζ
+    m = digamma(α) - digamma(β)
+    v = trigamma(α) + trigamma(β)
+    ps = expit.(discretize(Normal(m, √v), K))
+end
+
