@@ -170,20 +170,24 @@ function wstar!(W::AbstractMatrix{T}, t, θ, ϵ) where T
     b = 1. - ψ′
     c = log(a) + log(b) 
     d = log(ψ′)
-    r = κ/λ
-    if (zero(r) < r < 1e10) && (b > zero(b))
-        # gain+duplication+loss, NegativeBinomial contribution from gain
-        # if λ = κ this is a geometric distribution
-        # if λ is so small as to dwarfed by κ this is a Poisson distribution
-        # we use the gain-loss model in the latter case
-        W[1,:] = logpdf.(NegativeBinomial(r, b), 0:l)
-    elseif r >= 1e10  
-        # gain+loss (ignore duplication if λ ≈ 0), Poisson contribution from gain
-        r′ = κ * ϕ * (1. - exp(ϵ)) / μ  # recall ϕ = (1-e^(-μt))
-        W[1,:] = logpdf.(Poisson(r′), 0:l)     
-    else
+    if κ == 0
         # no gain (κ = 0.)
         W[1,1] = zero(T)
+        #W[1,:] .= T(-80.)  # XXX
+        #W[:,1] .= T(-80.)  # XXX ForwardDiff issues!
+    else
+        r = κ/λ
+        if (zero(r) < r < 1e10) && (b > zero(b))
+            # gain+duplication+loss, NegativeBinomial contribution from gain
+            # if λ = κ this is a geometric distribution
+            # if λ is so small as to dwarfed by κ this is a Poisson distribution
+            # we use the gain-loss model in the latter case
+            W[1,:] = logpdf.(NegativeBinomial(r, b), 0:l)
+        elseif r >= 1e10  
+            # gain+loss (ignore duplication if λ ≈ 0), Poisson contribution from gain
+            r′ = κ * ϕ * (1. - exp(ϵ)) / μ  # recall ϕ = (1-e^(-μt))
+            W[1,:] = logpdf.(Poisson(r′), 0:l)     
+        end
     end
     for m=1:l, n=1:m   # should we go from 1 to m?
         W[n+1, m+1] = logaddexp(d + W[n+1, m], c + W[n, m])
@@ -229,7 +233,8 @@ function wstar_wgm!(W, k, θ, logϵ)
         W[2, j+1] = log(p)
     end
     for i=2:l, j=i:(min(k*i,l))
-        W[i+1, j+1] = -Inf  # for safety 
+        # XXX issues with ForwardDiff -Inf doesn't work!
+        W[i+1, j+1] = -500. #-Inf  # for safety 
         # for a `k`-plication, we have min(j-1, k) terms to sum to get pᵢⱼ
         for n=1:min(j-i+1,k)
             W[i+1, j+1] = logaddexp(W[i+1, j+1], W[2, n+1] + W[i, j-n+1])
@@ -338,7 +343,8 @@ function setw!(W::AbstractMatrix{T}, θ, t) where T
         W[1,:] = logpdf.(NegativeBinomial(r, b), 0:l)
     elseif r >= 1e10  
         # gain+loss (ignore duplication if λ ≈ 0), Poisson contribution from gain
-        W[1,:] = logpdf.(Poisson(r), 0:l)     
+        ξ = κ*(1-exp(-μ*t))/μ
+        W[1,:] = logpdf.(Poisson(ξ), 0:l)     
     else
         # no gain (κ = 0.)
         W[1,1] = zero(T)
@@ -365,6 +371,8 @@ strategy.
 function conditionfactor(model)
     return if model.cond == :root
         nonextinctfromrootcondition(model)
+    elseif model.cond == :observed  # XXX not well-tested
+        marginal_extinctionp(model.rootp, getϵ(root(model), 2))
     elseif model.cond == :none
         0.
     else

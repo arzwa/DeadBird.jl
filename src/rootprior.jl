@@ -37,7 +37,8 @@ This is:
 ```
 
 For many priors a closed form can be obtained by manipulating the sum so that
-it becomes a geometric series.
+it becomes a geometric series. If the prior has a known closed form pgf, this
+is simply pgf(ϵ)
 """
 function marginal_extinctionp end
 
@@ -54,7 +55,8 @@ function marginal_extinctionp end
     return ℓ
 end
 
-# marginalize over Poisson
+# marginalize over Poisson, assumed to include 0 in the range...
+# for nonzero only we should define SHiftedPoisson I guess.
 @inline function marginalize(p::Poisson, ℓvec, logϵ)
     ℓ = -Inf
     r = p.λ*(1. - exp(logϵ))
@@ -65,6 +67,8 @@ end
     end
     return ℓ
 end
+
+marginal_extinctionp(p::Poisson, logϵ) = p.λ*(exp(logϵ)-1.)
 
 """
     ShiftedGeometric

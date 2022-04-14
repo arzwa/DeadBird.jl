@@ -58,6 +58,9 @@ y = log10.(X ./sum(X))
 p = scatter(1.5:length(y) + 0.5, y, xscale=:log10, color=:black)
 stepplot!(pps[:,1], ribbon=(pps[:,2], pps[:,3]), fillalpha=0.2)
 
+const ETA = 0.92
+const ZETA = 10.
+
 # 1. Constant rates
 # =================
 @model constantrate(dag, bound, tree, ::Type{T}=Float64) where T = begin
@@ -82,6 +85,8 @@ pp1 = DeadBird.simulate(y->mfun1(y, tree, bound), data, chn1, 1000)
 
 p1 = plot(pp1, taxa=taxa, xscale=:identity, xlim=(1,mx), xticks=(1:2:mx, 0:2:mx))
 
+serialize("docs/data/dicots/crate1.jls", chn1)
+
 
 # 2. Branch rates
 # ===============
@@ -90,20 +95,22 @@ p1 = plot(pp1, taxa=taxa, xscale=:identity, xlim=(1,mx), xticks=(1:2:mx, 0:2:mx)
     #ζ ~ LogNormal(0, 1.)
     η = 0.92
     ζ = 10.
-    τ = .2
+    #τ = .2
+    τ ~ Exponential()
     r ~ Normal(log(3.), 2)
     λ ~ MvNormal(fill(r, n-1), τ)  
     μ ~ MvNormal(fill(r, n-1), τ)  
     l = [r ; λ]
     m = [r ; μ]
-    θ = DLG(λ=l, μ=m, κ=fill(T(1e-10), n))
+    θ = DLG(λ=l, μ=m, κ=fill(T(-10), n))
     p = ShiftedBetaGeometric(η, ζ)
     dag ~ PhyloBDP(θ, p, tree, bound)
 end
 
-chn2 = sample(brate(dag, bound, tree), NUTS(), 500)
+chn2 = sample(brate(dag, bound, tree), NUTS(), 500, save_state=true)
 
-serialize("docs/data/dicots/brate1.jls", chn2)
+serialize("docs/data/dicots/brate2.jls", chn2)
+chn2 = deserialize("docs/data/dicots/brate2.jls")
 
 function mfun2(x, tree, bound)
     xs = getparams(x)
@@ -111,12 +118,12 @@ function mfun2(x, tree, bound)
     η = 0.92
     l = [xs.r ; makevec(xs, "λ")]
     m = [xs.r ; makevec(xs, "μ")]
-    PhyloBDP(DLG(λ=l, μ=m, κ=zeros(length(l))), ShiftedBetaGeometric(η, ζ), tree, bound)
+    PhyloBDP(DLG(λ=l, μ=m, κ=fill(-Inf, length(l))), ShiftedBetaGeometric(η, ζ), tree, bound)
 end
 pp2 = DeadBird.simulate(y->mfun2(y, tree, bound), data, chn2, 1000)
 
 # overall plot
-default(guidefont=10, titlefont=10, title_loc=:left)
+default(guidefont=10, titlefont=10, title_loc=:left, framestyle=:default)
 order = reverse(name.(getleaves(tree)))
 p1 = plot(pp1, order=order, taxa=taxa, xscale=:identity, 
           xlim=(1,mx), xticks=(1.5:2:mx+0.5, 0:2:mx))
@@ -140,7 +147,7 @@ p3 = plot(ps..., ylim=(0,0.7), legend=false, ygrid=false, size=(300,200),
 
 plot(p2, p3, size=(700,400), layout=grid(1,2,widths=[0.85,0.15]))
 
-savefig("docs/img/dicot-9taxa-ppd.pdf")
+#savefig("docs/img/dicot-9taxa-ppd.pdf")
 
 # colored tree
 # ============
@@ -238,3 +245,60 @@ for n in getleaves(ftree)
     s *= @sprintf "| *%s* | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f | \n" name(n) m1 q11 q12 m2 q21 q22
 end
 println(s)
+
+
+
+# 3. Branch rates, with WGDs
+# ==========================
+@model bratewgd(model, n, dag, wgds, ::Type{T}=Float64) where T = begin
+    τ = .2
+    r1 ~ Normal(log(3.), 2)
+    r2 ~ Normal(log(3.), 2)
+    λ ~ MvNormal(fill(r1, n-1), τ)  
+    μ ~ MvNormal(fill(r2, n-1), τ)  
+    l = [r1 ; λ]
+    m = [r2 ; μ]
+    q ~ filldist(Beta(), length(wgds))
+    qdict = Dict(wgds[i]=>q[i] for i=1:length(wgds))
+    θ = DLGWGM(λ=l, μ=m, κ=fill(T(-10.), n), q=qdict)
+    dag ~ model(rates=θ)
+end
+
+ns = [getlca(tree, "ptr"),
+      getlca(tree, "cqu"),
+      getlca(tree, "mtr"),
+      getlca(tree, "ath"),
+      getlca(tree, "sly"),
+      getlca(tree, "ugi")
+     ]
+wgds = [id(n)=>(distance(n)/2, 2, 0.1) for n in ns]
+
+dag, bound = CountDAG(data, tree)
+
+rootprior = ShiftedBetaGeometric(ETA, ZETA)
+n = length(postwalk(tree))
+model1 = PhyloBDP(DLGWGM(λ=zeros(n), μ=zeros(n), κ=fill(-Inf, n)), rootprior, tree, bound)
+model1 = DeadBird.insertwgms(model1, wgds...)
+dag, bound = CountDAG(data, model1)
+model1 = model1(bound=bound)
+wgds = sort(collect(keys(model1.rates.q)))
+
+chn0  = sample(bratewgd(model1, n, dag, wgds), NUTS(), 20; save_state=true)
+chn01 = sample(bratewgd(model1, n, dag, wgds), NUTS(), 500; save_state=true, resume_from=chn0)
+
+serialize("docs/data/dicots/brate-wgd1.jls", chn01)
+
+function mfun3(model, x)
+    xs = getparams(x)
+    l = [xs.r ; makevec(xs, "λ")]
+    m = [xs.r ; makevec(xs, "μ")]
+    q = makevec(xs, "q")
+    qdict = Dict(wgds[i]=>q[i] for i=1:length(wgds))
+    θ = DLGWGM(λ=l, μ=m, κ=fill(-Inf, length(l)), q=qdict)
+    model(rates=θ)
+end
+pp3 = DeadBird.simulate(y->mfun3(model1, y), data, chn0, 1000)
+
+plot(pp3, xscale=:identity)
+
+
