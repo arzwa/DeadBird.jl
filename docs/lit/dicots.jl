@@ -269,7 +269,10 @@ ns = [getlca(tree, "ptr"),
       getlca(tree, "mtr"),
       getlca(tree, "ath"),
       getlca(tree, "sly"),
-      getlca(tree, "ugi")
+      getlca(tree, "ugi"),
+      getlca(tree, "cpa"),
+      getlca(tree, "bvu"),
+      getlca(tree, "vvi"),
      ]
 wgds = [id(n)=>(distance(n)/2, 2, 0.1) for n in ns]
 
@@ -290,8 +293,8 @@ serialize("docs/data/dicots/brate-wgd1.jls", chn01)
 
 function mfun3(model, x)
     xs = getparams(x)
-    l = [xs.r ; makevec(xs, "λ")]
-    m = [xs.r ; makevec(xs, "μ")]
+    l = [xs.r1 ; makevec(xs, "λ")]
+    m = [xs.r2 ; makevec(xs, "μ")]
     q = makevec(xs, "q")
     qdict = Dict(wgds[i]=>q[i] for i=1:length(wgds))
     θ = DLGWGM(λ=l, μ=m, κ=fill(-Inf, length(l)), q=qdict)
