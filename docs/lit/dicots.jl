@@ -34,6 +34,12 @@ end
 # family-specific models).
 dag, bound = CountDAG(data, tree)
 
+# based on BG fit
+const ETA = 0.92
+const ZETA = 10.
+
+# 0. BG fit
+# =========
 # estimate ζ
 @model bgfit(xs) = begin
     η ~ Beta()
@@ -57,9 +63,6 @@ pps = bgsim(chn, X)
 y = log10.(X ./sum(X))
 p = scatter(1.5:length(y) + 0.5, y, xscale=:log10, color=:black)
 stepplot!(pps[:,1], ribbon=(pps[:,2], pps[:,3]), fillalpha=0.2)
-
-const ETA = 0.92
-const ZETA = 10.
 
 # 1. Constant rates
 # =================
@@ -86,6 +89,7 @@ pp1 = DeadBird.simulate(y->mfun1(y, tree, bound), data, chn1, 1000)
 p1 = plot(pp1, taxa=taxa, xscale=:identity, xlim=(1,mx), xticks=(1:2:mx, 0:2:mx))
 
 serialize("docs/data/dicots/crate1.jls", chn1)
+chn1 = deserialize("docs/data/dicots/crate1.jls")
 
 
 # 2. Branch rates
@@ -95,8 +99,8 @@ serialize("docs/data/dicots/crate1.jls", chn1)
     #ζ ~ LogNormal(0, 1.)
     η = 0.92
     ζ = 10.
-    #τ = .2
-    τ ~ Exponential()
+    τ = .1
+    #τ ~ Exponential()
     r ~ Normal(log(3.), 2)
     λ ~ MvNormal(fill(r, n-1), τ)  
     μ ~ MvNormal(fill(r, n-1), τ)  
@@ -110,18 +114,23 @@ end
 chn2 = sample(brate(dag, bound, tree), NUTS(), 500, save_state=true)
 
 serialize("docs/data/dicots/brate2.jls", chn2)
-chn2 = deserialize("docs/data/dicots/brate2.jls")
+
+# currently we use this one
+chn2 = deserialize("docs/data/dicots/brate3-tau0.1.jls")
 
 function mfun2(x, tree, bound)
     xs = getparams(x)
     ζ = 10.
     η = 0.92
-    l = [xs.r ; makevec(xs, "λ")]
-    m = [xs.r ; makevec(xs, "μ")]
+    l = [xs.r1 ; makevec(xs, "λ")]
+    m = [xs.r2 ; makevec(xs, "μ")]
     PhyloBDP(DLG(λ=l, μ=m, κ=fill(-Inf, length(l))), ShiftedBetaGeometric(η, ζ), tree, bound)
 end
 pp2 = DeadBird.simulate(y->mfun2(y, tree, bound), data, chn2, 1000)
 
+
+# Plot
+# ====
 # overall plot
 default(guidefont=10, titlefont=10, title_loc=:left, framestyle=:default)
 order = reverse(name.(getleaves(tree)))
@@ -147,10 +156,8 @@ p3 = plot(ps..., ylim=(0,0.7), legend=false, ygrid=false, size=(300,200),
 
 plot(p2, p3, size=(700,400), layout=grid(1,2,widths=[0.85,0.15]))
 
-#savefig("docs/img/dicot-9taxa-ppd.pdf")
 
 # colored tree
-# ============
 ftree = NewickTree.relabel(tree, taxa)
 
 using ColorSchemes
@@ -182,7 +189,6 @@ function getcolors(chn, tree, s, cs=ColorSchemes.viridis, transform=identity)
     colors = reshape(colors, size(vs))
     return colors, filter(isfinite, rates)
 end
-cs, rs = getcolors(chn2, ftree, "λ")
 
 function plot_cbar!(p, z, cs=ColorSchemes.viridis; n=100, lw=10)
     x1, x2 = xlims(p)
@@ -226,6 +232,10 @@ plot(pp)
 
 savefig("docs/img/dicot-9taxa-ppd.pdf")
 
+
+# Table
+# =====
+
 function getrates(chain, s)
     map(1:length(chain)) do i 
         makevec(getparams(chain[i]), s)
@@ -234,15 +244,15 @@ end
 
 l = exp.(getrates(chn2, "λ"))
 m = exp.(getrates(chn2, "μ"))
-s = "| Species | \$\\lambda\$ | 2.5% | 97.5% | \$\\mu\$ | 2.5% | 97.5% |\n"
-s *= "| ------- | ------------ | ---- | ----- | -------- | ---- | ----- |\n"
+s  = "| Species | \$\\lambda\$ | 95% UI | \$\\mu\$ | 95% UI |\n"
+s *= "| ------- | -----------: | -----: | -------: | -----: |\n"
 for n in getleaves(ftree)
     i = id(n) - 1
     m1 = mean(l[i,:])
     q11, q12 = quantile(l[i,:], [0.025, 0.975])
     m2 = mean(m[i,:])
     q21, q22 = quantile(m[i,:], [0.025, 0.975])
-    s *= @sprintf "| *%s* | %.1f | %.1f | %.1f | %.1f | %.1f | %.1f | \n" name(n) m1 q11 q12 m2 q21 q22
+    s *= @sprintf "| *%s* | %.1f | (%.1f, %.1f) | %.1f | (%.1f, %.1f) | \n" name(n) m1 q11 q12 m2 q21 q22
 end
 println(s)
 
@@ -251,9 +261,10 @@ println(s)
 # 3. Branch rates, with WGDs
 # ==========================
 @model bratewgd(model, n, dag, wgds, ::Type{T}=Float64) where T = begin
-    τ = .2
-    r1 ~ Normal(log(3.), 2)
-    r2 ~ Normal(log(3.), 2)
+    τ = 0.1
+    #τ ~ Exponential(0.2)
+    r1 ~ Normal(log(1.5), 2)
+    r2 ~ Normal(log(1.5), 2)
     λ ~ MvNormal(fill(r1, n-1), τ)  
     μ ~ MvNormal(fill(r2, n-1), τ)  
     l = [r1 ; λ]
@@ -286,10 +297,12 @@ dag, bound = CountDAG(data, model1)
 model1 = model1(bound=bound)
 wgds = sort(collect(keys(model1.rates.q)))
 
-chn0  = sample(bratewgd(model1, n, dag, wgds), NUTS(), 20; save_state=true)
+chn0  = sample(bratewgd(model1, n, dag, wgds), NUTS(), 100; save_state=true)
 chn01 = sample(bratewgd(model1, n, dag, wgds), NUTS(), 500; save_state=true, resume_from=chn0)
 
-serialize("docs/data/dicots/brate-wgd1.jls", chn01)
+serialize("docs/data/dicots/brate-wgd2.jls", chn0)
+
+chn3 = deserialize("docs/data/dicots/brate-wgd2.jls")
 
 function mfun3(model, x)
     xs = getparams(x)
@@ -300,8 +313,99 @@ function mfun3(model, x)
     θ = DLGWGM(λ=l, μ=m, κ=fill(-Inf, length(l)), q=qdict)
     model(rates=θ)
 end
-pp3 = DeadBird.simulate(y->mfun3(model1, y), data, chn0, 1000)
-
-plot(pp3, xscale=:identity)
+pp3 = DeadBird.simulate(y->mfun3(model1, y), data, chn3, 1000)
 
 
+# Plot ---------------
+default(guidefont=10, titlefont=10, title_loc=:left, framestyle=:default)
+order = reverse(name.(getleaves(tree)))
+p2 = plot(pp3, order=order, taxa=taxa, xscale=:identity, 
+          xlim=(1,mx), xticks=(1.5:2:mx+0.5, 0:2:mx))
+
+ps = map(["cqu", "ptr"]) do sp
+    rnge = 1:5
+    cqu = permutedims(pp3.sims[sp][rnge,:])
+    violin(cqu, color=:lightgray, linecolor=:lightgray, xticks=(rnge, rnge .-1))
+    y = proportions(data[:,sp])[1:rnge[end]]
+    sticks!(rnge, y, color=:black, ms=4)
+    scatter!(rnge .+1e-2, y, color=:black, ms=5, title=taxa[sp])
+end 
+ylabel!.(ps, "\$p_n\$")
+xlabel!(ps[2], "\$n\$")
+p3 = plot(ps..., ylim=(0,0.7), legend=false, ygrid=false, size=(300,200),
+          titlefont=10, titlefontfamily="helvetica oblique", title_loc=:left,
+          layout=(2,1))
+
+
+cs, ls = getcolors(chn3, ftree, "λ")
+t1 = plot(ftree, linecolor=cs, lw=2, fontfamily="helvetica oblique", pad=0.7,
+          xlim=(-0.0,0.3), title="\$\\lambda\$")
+plot_cbar!(t1, exp.(extrema(ls)))
+
+cs, ms = getcolors(chn3, ftree, "μ")
+t2 = plot(ftree, linecolor=cs, lw=2, fontfamily="helvetica oblique", pad=0.7,
+          xlim=(-0.0,0.3), title="\$\\mu\$")
+plot_cbar!(t2, exp.(extrema(ms)))
+tp = plot(t1, t2, size=(500,250), colobar=true)
+
+tp = plot(t1, t2, layout=(2,1))
+for sp in p2.subplots[1:6]
+    xlabel!(sp, "")
+end
+for sp in [p2.subplots[7:end] ; p3.subplots[2]; tp.subplots[2]]
+    sp.attr[:bottom_margin]=3mm
+end
+for sp in p2.subplots[[2,3,5,6,8,9]]
+    ylabel!(sp, "")
+end
+for sp in p2.subplots[[1,4,7]]
+    sp.attr[:left_margin]=3mm
+end
+pp = plot(p2, p3, tp, size=(1000,400), layout=grid(1,3,widths=[0.65,0.12,0.23]))
+for sp in pp.subplots
+    sp.attr[:fontfamily_subplot] = "sans-serif"
+end
+plot(pp)
+
+savefig("docs/img/dicots-brate-wgd.pdf")
+
+
+
+function getrates(chain, s)
+    map(1:length(chain)) do i 
+        makevec(getparams(chain[i]), s)
+    end |> x->hcat(x...)
+end
+
+function reflected_kde(xs; kwargs...)
+    K = kde([xs ; -xs]; kwargs...)
+    n = length(K.x) ÷ 2
+    K.density = K.density[n+1:end] .* 2
+    K.x = K.x[n+1:end]
+    return K
+end
+
+chn = chn3
+d = Dict(id(model1.nodes[k][1][1])=>i for (i,k) in enumerate(wgds))
+l = exp.(getrates(chn, "λ"))
+m = exp.(getrates(chn, "μ"))
+q = getrates(chn, "q")
+s =  "| Species | \$q\$ | 95% UI| \$\\lambda\$ | 95% UI | \$\\mu\$ | 95% UI | \$\\log_{10}K\$ |\n"
+s *= "| ------- |-----: | --------: | -----------: | ------: | -------: | ------: | --------------: |\n"
+for n in getleaves(ftree)
+    i = id(n) - 1
+    m1 = mean(l[i,:])
+    q11, q12 = quantile(l[i,:], [0.025, 0.975])
+    m2 = mean(m[i,:])
+    q21, q22 = quantile(m[i,:], [0.025, 0.975])
+    qs = q[d[id(n)],:]
+    m3 = mean(qs)
+    q31, q32 = quantile(qs, [0.025, 0.975])
+    K = log10(reflected_kde(qs, bandwidth=0.01).density[1])
+    sK = K < -2. ? "<-3" : @sprintf "%.1f" K
+    s *= @sprintf "| *%s* " name(n)
+    s *= @sprintf "| %.1f | (%.1f, %.1f) " m1 q11 q12
+    s *= @sprintf "| %.1f | (%.1f, %.1f) " m2 q21 q22
+    s *= @sprintf "| %.2f | (%.2f, %.2f) | %s |\n" m3 q31 q32 sK
+end
+println(s)

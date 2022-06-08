@@ -454,12 +454,27 @@ function loglikelihood!(dag::CountDAG,
     isfinite(ℓ) ? ℓ : -Inf
 end
 
+
 # computes the site loglikelihood for each site pattern
 function sitepatterns_ℓ(dag, model, nodes)
     ϵ = getϵ(model[1], 2)
     [marginalize(model.rootp, dag.parts[n], ϵ) for n in nodes]
 end
 
+# compute posterior probabilities for a single profile in a mixture model
+function componentps(model::MixtureModel, y::Profile)
+    K = length(model.components)
+    l = map(1:K) do i
+        m = model.components[i]
+        p = model.prior.p[i]
+        logpdf(m, y) + log(p)
+    end
+    exp.(l .- logsumexp(l))
+end
+
+function componentps(model::MixtureModel, y::ProfileMatrix)
+    mapreduce(i->componentps(model, y[i]), hcat, 1:size(y,1)) |> permutedims
+end
 
 # Likelihood using the Profile(Matrix) data structure 
 # ===================================================
