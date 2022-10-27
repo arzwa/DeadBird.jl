@@ -30,6 +30,7 @@ include("utils.jl")
 include("ancestral.jl")
 include("clocks.jl")
 include("yulesimon.jl")
+include("_condition.jl")
 
 """
     example_data()
@@ -61,6 +62,6 @@ end
 export CountDAG, ProfileMatrix, Profile
 export ConstantDLG, ConstantDLGWGM, DLG, DLGWGM, PhyloBDP, ModelArray
 export ShiftedGeometric, ShiftedBetaGeometric, BetaGeometric
-export simulate
+export simulate, observedmatrix
 
 end # module

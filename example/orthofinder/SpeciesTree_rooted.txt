@@ -1,0 +1,1 @@
+(Drosophila_melanogaster:0.479608,((Danio_rerio:0.161136,Takifugu_rubripes:0.203685)0.766089:0.081826,((Homo_sapiens:0.0696618,Mus_musculus:0.0686948)0.965907:0.138773,Xenopus_tropicalis:0.214794)0.711759:0.075605)1:0.479608);

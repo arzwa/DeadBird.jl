@@ -24,12 +24,14 @@ function AncestralSampler(model, bound)
     for n in model.order[1:end-1]
         θ = getθ(model.rates, n)
         t = distance(n)
-        setw!(W[id(n)], θ, t) 
+        iswgmafter(n) ? 
+            setw_wgm!(W[id(n)], getk(parent(n)), θ) :
+            setw!(W[id(n)], θ, t) 
     end
     return AncestralSampler(W, model)
 end
 
-getbound(spl::AncestralSampler) = size(spl.W, 1) - 1
+getbound(spl::AncestralSampler) = size(spl.W[1], 1) - 1
 
 """
     Transient
@@ -46,8 +48,25 @@ Distributions.logpdf(d::Transient, X) = d.p[X+1]
 # normalize log-probabilities
 function plognormalize(logp)
     logp[.!isfinite.(logp)] .= -Inf
-    x = exp.(sort(logp .- maximum(logp), rev=true))
+    x = exp.(logp .- maximum(logp))
     return x ./ sum(x)
+end
+
+function sample_ancestral(mfun, chain, X, N)
+    idx = sample(1:length(chain), N)
+    xs = map(i->sample_ancestral(mfun(chain[i]), X), idx)
+    cat(xs..., dims=3)::Array{Int64,3}
+end
+
+function sample_ancestral(model::PhyloBDP, X::ProfileMatrix)
+    A = AncestralSampler(model, maximum(x->x.x[1], X))
+    sample_ancestral(A, X)
+end
+
+function sample_ancestral(spl::AncestralSampler, X::ProfileMatrix; eval=true)
+    eval && loglikelihood!(X, spl.model)
+    xs = tmap(i->sample_ancestral(spl, X[i]), 1:size(X,1))
+    reduce(hcat, xs)::Matrix{Int64}
 end
 
 """
@@ -89,12 +108,12 @@ parent state.
 """
 function sample_ancestral_node(rng::AbstractRNG, node, x, prior, bound)
     p = ppmf(node, x, prior, bound)
-    rand(rng, Categorical(p))
+    rand(rng, Categorical(p)) - 1
 end
 
 function sample_ancestral_node(rng::AbstractRNG, node, x, prior, bound, n)
     p = ppmf(node, x, prior, bound)
-    rand(rng, Categorical(p), n)
+    rand(rng, Categorical(p), n) .- 1
 end
 
 """
@@ -110,13 +129,15 @@ ppmf(n::ModelNode, x, d, b) =  ppmf(x, getϵ(n, 2), d, b)
 function ppmf(ℓvec, logϵ, prior, bound)
     l1mϵ = log1mexp(logϵ)
     p = fill(-Inf, bound)
-    for n=1:bound
+    for n=0:bound-1
         for k=0:min(n, length(ℓvec)-1)
-            p_nk = ℓvec[k+1] + (n - k)*logϵ + k*l1mϵ + logpdf(prior, n)
-            p[n] = logaddexp(p[n], p_nk)
+            p_nk = ℓvec[k+1] + (n - k)*logϵ + k*l1mϵ + log(binomial(n,k))
+            p[n+1] = logaddexp(p[n+1], p_nk)
         end
+        p[n+1] += logpdf(prior, n)  
     end
-    return plognormalize(p)
+    p = plognormalize(p)
+    return p
 end
 
 

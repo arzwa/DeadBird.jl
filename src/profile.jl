@@ -73,6 +73,8 @@ copyparts(x, ::Type{T}) where T = [fill(T(-Inf), length(y)) for y in x]
 Base.getindex(P::ProfileMatrix, i) = P.profiles[i]
 Base.getindex(P::ProfileMatrix, i, j) = P.profiles[i].x[j]
 Base.size(P::ProfileMatrix) = (length(P.profiles), length(P[1]))
+Base.iterate(P::ProfileMatrix) = iterate(P.profiles)
+Base.iterate(P::ProfileMatrix, i) = iterate(P.profiles, i)
 
 Distributions.logpdf(m::PhyloBDP{T}, x::ProfileMatrix) where T = loglikelihood!(x(T), m)
 Distributions.logpdf(m::PhyloBDP{T}, x::Profile) where T = loglikelihood!(x(T), m)

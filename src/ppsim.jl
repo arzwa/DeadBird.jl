@@ -14,6 +14,12 @@ end
 
 Base.show(io::IO, x::PPSim) = write(io, "PP simulations (N=$(x.N), n=$(x.n))")
 
+# utility function to get a named tuple for a chain 'row'
+function getparams(x)
+    vars = x.value.axes[2]
+    (; [var=>x for (var,x) in zip(vars, vec(x.value.data))]...)
+end
+
 function table(x::PPSim, xs=1:5; sp=:all, kmin=1, abbr=false)
     sp = sp == :all ? collect(keys(x.data)) : sp
     rows = []
@@ -74,16 +80,26 @@ PP simulations (N = 100, n = 10)
 ```
 """
 function simulate(mfun::Function, data::DataFrame, chain, N=nrow(data))    
-    simfun = i->simulate(mfun(chain[i]), N) |> leafpmf 
-    Ypp = tmap(simfun, 1:length(chain))
+    #simfun = i->simulate(mfun(chain[i]), N) |> leafpmf 
+    Ypp = tmap(i->simfun(mfun(chain[i]), N), 1:length(chain))
     PPSim(mfun, leafpmf(data), combine_pmfs(Ypp), N, length(chain))
 end
 
-function simulate_ma(mfun::Function, data::DataFrame, chain)    
-    simfun = i->simulate(mfun(chain[i])) |> leafpmf 
-    Ypp = tmap(simfun, 1:length(chain))
-    PPSim(mfun, leafpmf(data), combine_pmfs(Ypp), nrow(data), length(chain))
+# HACK
+leafnodes(model::MixtureModel) = leafnodes(model.components[1])
+leafnodes(model) = getleaves(root(model))
+
+function simfun(model, N)
+    df = simulate(model, N)
+    df = rename(df, Dict(id(n)=>name(n) for n in leafnodes(model)))
+    return leafpmf(df)
 end
+
+#function simulate_ma(mfun::Function, data::DataFrame, chain)    
+#    simfun = i->simulate(mfun(chain[i])) |> leafpmf 
+#    Ypp = tmap(simfun, 1:length(chain))
+#    PPSim(mfun, leafpmf(data), combine_pmfs(Ypp), nrow(data), length(chain))
+#end
 
 function leafpmf(df) 
     Dict(k=>_proportions(v) for (k, v) in zip(names(df), eachcol(df)))

@@ -99,6 +99,7 @@ Distributions.logpdf(d::ShiftedGeometric, k::Int) = logpdf(Geometric(d.η), k-1)
 end
 
 # marginalize extinction probability
+# this is the log pgf of a geometric rv
 function marginal_extinctionp(p::ShiftedGeometric, logϵ)
     log(p.η) + logϵ - log1mexp(log(1 - p.η) + logϵ)
 end
@@ -138,7 +139,7 @@ function Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric)
 end
 
 Base.rand(rng::AbstractRNG, d::ShiftedBetaGeometric, n::Int) = map(i->rand(rng, d), 1:n)
-Distributions.logpdf(d::ShiftedBetaGeometric, k) = logp(d.α, d.β, k - 1)
+Distributions.logpdf(d::ShiftedBetaGeometric, k) = k < 1 ? -Inf : logp(d.α, d.β, k - 1)
 
 """
     marginalize(p::ShiftedBetaGeometric, ℓvec, logϵ, imax=100)

@@ -36,7 +36,7 @@ dag, bound = CountDAG(data, tree)
 
 # We will define a Turing model for this simple problem
 @model singlerate(dag, bound, tree, rootprior) = begin
-    λ ~ Exponential()
+    λ ~ Turing.FlatPos(0.)
     θ = ConstantDLG(λ=λ, μ=λ, κ=zero(λ))
     dag ~ PhyloBDP(θ, rootprior, tree, bound)
 end
@@ -106,7 +106,6 @@ end;
 # Now we'll perform Bayesian inference using the No-U-turn sampler. Note that
 # we've defined an uninformative flat prior (`FlatPos(0.0)`), so we expect to
 # find a posterior mean estimate for `λ` that coincides with the MLE.
-model = singlerate(dag, bound, tree, rootprior)
 chain = sample(model, NUTS(), 100)
 
 # Of course, it would be better to run such a chain for more iterations, e.g. 

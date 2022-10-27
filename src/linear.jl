@@ -18,6 +18,12 @@ approx1(x) = x ≈ one(x) ? one(x) : x
 approx0(x) = x ≈ zero(x) ? zero(x) : x
 probify(x) = max(min(x, one(x)), zero(x))
 
+function _logaddexp(a, b)
+    (a == -Inf && b == -Inf) && return -Inf
+    a == -Inf && return b
+    b == -Inf && return a
+    return logaddexp(a, b)
+end
 
 # Conditional survival transition probabilities and extinction probabilities
 # ==========================================================================
@@ -170,11 +176,11 @@ function wstar!(W::AbstractMatrix{T}, t, θ, ϵ) where T
     b = 1. - ψ′
     c = log(a) + log(b) 
     d = log(ψ′)
-    if κ == 0
+    if κ == 0.
         # no gain (κ = 0.)
-        W[1,1] = zero(T)
         #W[1,:] .= T(-80.)  # XXX
         #W[:,1] .= T(-80.)  # XXX ForwardDiff issues!
+        W[1,1] = zero(T)
     else
         r = κ/λ
         if (zero(r) < r < 1e10) && (b > zero(b))
@@ -190,7 +196,7 @@ function wstar!(W::AbstractMatrix{T}, t, θ, ϵ) where T
         end
     end
     for m=1:l, n=1:m   # should we go from 1 to m?
-        W[n+1, m+1] = logaddexp(d + W[n+1, m], c + W[n, m])
+        W[n+1, m+1] = _logaddexp(d + W[n+1, m], c + W[n, m])
     end
 end
 
@@ -237,7 +243,7 @@ function wstar_wgm!(W, k, θ, logϵ)
         W[i+1, j+1] = -500. #-Inf  # for safety 
         # for a `k`-plication, we have min(j-1, k) terms to sum to get pᵢⱼ
         for n=1:min(j-i+1,k)
-            W[i+1, j+1] = logaddexp(W[i+1, j+1], W[2, n+1] + W[i, j-n+1])
+            W[i+1, j+1] = _logaddexp(W[i+1, j+1], W[2, n+1] + W[i, j-n+1])
         end
     end
 end
@@ -283,7 +289,7 @@ function wstar_wgm_ne_nonrecursive!(W, k, θ, logϵ)
             p_ += log(B[a+1, n+1]) + n*log(q) + (a-n) * log(1. - q)
             #wij += p_ * binomial(a, n) * q^n * (1-q)^(a-n)
             #wij += p_ * B[a+1, n+1] * q^n * (1-q)^(a-n)
-            W[i+1, j+1] = logaddexp(W[i+1, j+1], p_)
+            W[i+1, j+1] = _logaddexp(W[i+1, j+1], p_)
         end
     end
 end
@@ -315,7 +321,7 @@ function wstar_wgm_ne!(W, k, θ, logϵ)
     for i=1:l, j=i:(min(k*(i+1)-1,l))
         W[i+1, j+1] = -Inf  # for safety 
         for n=0:min(j-i,k-1)
-            W[i+1, j+1] = logaddexp(W[i+1, j+1], W[1, n+1] + W[i, j-n] + nϵ)
+            W[i+1, j+1] = _logaddexp(W[i+1, j+1], W[1, n+1] + W[i, j-n] + nϵ)
         end
     end
 end
@@ -351,10 +357,32 @@ function setw!(W::AbstractMatrix{T}, θ, t) where T
     end
     for n=1:l
         W[n+1, 1] = lϕ + W[n, 1]
-        W[n+1, 2] = logaddexp(lϕ + W[n, 2], c + W[n, 1])
+        W[n+1, 2] = _logaddexp(lϕ + W[n, 2], c + W[n, 1])
         for m=2:l
-            x = logaddexp(lψ + W[n+1, m], d + W[n, m])
-            W[n+1, m+1] = logaddexp(x, lϕ + W[n, m+1])
+            x = _logaddexp(lψ + W[n+1, m], d + W[n, m])
+            W[n+1, m+1] = _logaddexp(x, lϕ + W[n, m+1])
+        end
+    end
+end
+
+# ordinary transition probability matrix (not conditional on survival) for WGM
+function setw_wgm!(W, k, θ)
+    @unpack λ, μ, q = θ
+    l = size(W, 1) - 1
+    W[1,1] = zero(λ)  # gain is not involved at wgm nodes 0->0 w.p. 1
+    for j=1:k  # initialization
+        p = zero(λ)
+        for n=j:k
+            p += binomial(k-1, n-1) * q^(n-1) * (1. - q)^(k-n)  
+            # n-1 out of k-1 excess genes retained, n genes in total
+        end
+        W[2, j+1] = log(p)
+    end
+    for i=2:l, j=i:(min(k*i,l))
+        W[i+1, j+1] = -Inf  # for safety 
+        # for a `k`-plication, we have min(j-1, k) terms to sum to get pᵢⱼ
+        for n=1:min(j-i+1,k)
+            W[i+1, j+1] = _logaddexp(W[i+1, j+1], W[2, n+1] + W[i, j-n+1])
         end
     end
 end
@@ -373,6 +401,8 @@ function conditionfactor(model)
         nonextinctfromrootcondition(model)
     elseif model.cond == :observed  # XXX not well-tested
         marginal_extinctionp(model.rootp, getϵ(root(model), 2))
+    elseif model.cond == :all
+        conditionfactor(model, model.rootp)
     elseif model.cond == :none
         0.
     else
@@ -394,7 +424,7 @@ function nonextinctfromrootcondition(model)
     ϵo = marginal_extinctionp(model.rootp, getϵ(o, 2)) 
     ϵc = -Inf
     for c in children(o)
-        ϵc = logaddexp(ϵc, marginal_extinctionp(model.rootp, getϵ(c, 1)))
+        ϵc = _logaddexp(ϵc, marginal_extinctionp(model.rootp, getϵ(c, 1)))
     end
     log(probify(1. - exp(ϵc) + exp(ϵo)))
 end
@@ -596,7 +626,7 @@ end
     for t=1:k1, s=0:mi  # this is 0...M[i-1] & 0...mi
         @inbounds Bts = s == mi ?
             B[s+1,t] + lϵ₁ : 
-            logaddexp(B[s+2,t], lϵ₁+B[s+1,t])
+            _logaddexp(B[s+2,t], lϵ₁+B[s+1,t])
         @inbounds B[s+1,t+1] = Bts
     end
     return B
@@ -621,7 +651,7 @@ end
             s = n-t
             # n, t and s correspond to 0-based indices (true counts)
             @inbounds lp = binomlogpdf(n, p, s) + A[t+1] + B[s+1,t+1]
-            @inbounds Aᵢ[n+1] = logaddexp(Aᵢ[n+1], lp)
+            @inbounds Aᵢ[n+1] = _logaddexp(Aᵢ[n+1], lp)
         end
     end
     for n=0:k2  # this is 0 ... M[i]

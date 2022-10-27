@@ -9,7 +9,6 @@ function nonwgmchild(n)
    return n
 end
 
-
 """
     RatesModel
 
@@ -21,17 +20,9 @@ const LinearModel{T} = RatesModel{T}  # currently non-linear models no longer su
 
 is_excessmodel(m::RatesModel) = false
 
-function Base.NamedTuple(m::M) where M<:RatesModel
-    return (; (k => getfield(m, k) for k in propertynames(m))...)
-end
-
-"""
-    newmodel(m::M, θ) where M<:RatesModel
-
-Construct a new model of type `M` by taking the parameters of `m` and
-parameters defined in the named tuple `θ`, the latter overriding the former.
-"""
-newmodel(m::M, θ) where M<:RatesModel = M(merge(NamedTuple(m), θ)...)
+#function Base.NamedTuple(m::M) where M<:RatesModel
+#    return (; (k => getfield(m, k) for k in propertynames(m))...)
+#end
 
 """
     getθ(m<:RatesModel, node)
@@ -55,6 +46,8 @@ rate κ).
     κ::T = 0.
 end
 
+ConstantDLG(λ, μ, κ) = ConstantDLG(promote(λ, μ, κ)...)
+
 """
     ConstantDLGWGM{T}
 
@@ -68,6 +61,14 @@ Similar to `ConstantDLG`, but with a field for whole-genome multiplication
     κ::T = 0.
     q::Dict{I,T} = Dict{UInt16,Float64}()
     excess = false
+end
+
+# promotion...
+function ConstantDLGWGM(λ, μ, κ, q, e)
+    λ, μ, κ = promote(λ, μ, κ)
+    V = typeof(λ)
+    q = Dict(i=>V(qi) for (i,qi) in q)
+    ConstantDLGWGM(λ, μ, κ, q, e)
 end
 
 getθ(m::ConstantDLGWGM, node) = 
@@ -105,6 +106,14 @@ Similar to `DLG`, but with WGM nodes, see also `ConstantDLGWGM`.
     κ::Vector{T}
     q::Dict{I,T} = Dict{UInt16,Float64}()
     excess = false
+end
+
+# promotion...
+function DLGWGM(λ, μ, κ, q, e)
+    λ, μ, κ = promote(λ, μ, κ)
+    V = eltype(λ)
+    q = Dict(i=>V(qi) for (i,qi) in q)
+    DLGWGM(λ, μ, κ, q, e)
 end
 
 function getθ(m::DLGWGM, node)

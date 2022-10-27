@@ -297,14 +297,14 @@ dag, bound = CountDAG(data, model1)
 model1 = model1(bound=bound)
 wgds = sort(collect(keys(model1.rates.q)))
 
-chn0  = sample(bratewgd(model1, n, dag, wgds), NUTS(), 100; save_state=true)
-chn01 = sample(bratewgd(model1, n, dag, wgds), NUTS(), 500; save_state=true, resume_from=chn0)
+#chn0  = sample(bratewgd(model1, n, dag, wgds), NUTS(), 100; save_state=true)
+#chn01 = sample(bratewgd(model1, n, dag, wgds), NUTS(), 500; save_state=true, resume_from=chn0)
 
-serialize("docs/data/dicots/brate-wgd2.jls", chn0)
+#serialize("docs/data/dicots/brate-wgd2.jls", chn0)
 
 chn3 = deserialize("docs/data/dicots/brate-wgd2.jls")
 
-function mfun3(model, x)
+function mfun3(model, wgds, x)
     xs = getparams(x)
     l = [xs.r1 ; makevec(xs, "λ")]
     m = [xs.r2 ; makevec(xs, "μ")]
@@ -313,7 +313,47 @@ function mfun3(model, x)
     θ = DLGWGM(λ=l, μ=m, κ=fill(-Inf, length(l)), q=qdict)
     model(rates=θ)
 end
-pp3 = DeadBird.simulate(y->mfun3(model1, y), data, chn3, 1000)
+pp3 = DeadBird.simulate(y->mfun3(model1, wgds, y), data, chn3, 1000)
+
+
+# Ancestral state stuff
+# =====================
+mat, _ = ProfileMatrix(data, getroot(model1))
+xs = DeadBird.sample_ancestral(y->mfun3(model1, wgds, y), chn3, mat, 1000)
+
+xs = deserialize("docs/data/dicots/brate-wgd2-anc.jls")
+
+# posterior expected number of genes at each node for each family
+xs1 = permutedims(reshape(sum(xs, dims=3) ./ 1000, length(model1), size(mat,1)))
+
+# average number of genes per node across families for each simulation
+# replicate
+xs2 = permutedims(reshape(sum(xs, dims=2) ./ 1000, length(model1), 1000))
+
+xs3 = vec(sum(xs1, dims=1))
+
+ps = NewickTree.treepositions(model1[1])
+taxa2 = Dict(k=>@sprintf("         %s", v) for (k,v) in taxa)
+p = plot(NewickTree.relabel(tree, taxa2), fontfamily="helvetica oblique")
+for n in model1.order
+    q1, q2 = quantile(xs2[:,id(n)], (0.025, 0.975)) .* 1000
+    #E = sum(xs2[:,id(n)])
+    aln = DeadBird.iswgmafter(n) || isleaf(n) ? :left : :right
+    if isleaf(n)
+        annotate!(p, ps[n][1], ps[n][2], text(@sprintf("%4d", q1) , :helvetica, 8, aln)) 
+    else
+        s = DeadBird.iswgmafter(n) ? " | " : ""
+        ls = name.(getleaves(n))  
+        color = length(ls) == 1 && ls[1] ∈ ["vvi", "cpa", "bvu"] ? :lightgray : :black
+        annotate!(p, ps[n][1], ps[n][2]-0.2, text(s * @sprintf("%4d", q1), :helvetica, color, 8, aln))
+        annotate!(p, ps[n][1], ps[n][2]+0.2, text(s * @sprintf("%4d", q2), :helvetica, color, 8, aln))
+    end
+end
+plot(p,left_margin=6Plots.mm, right_margin=33Plots.mm, size=(550,400))
+
+savefig("docs/img/dicots-ancestralstates.pdf")
+
+
 
 
 # Plot ---------------

@@ -35,7 +35,8 @@ struct CountDAG{T,G,I}  # too many types?
     nfam  ::Int
 end
 
-Base.show(io::IO, dag::CountDAG) = write(io, "CountDAG($(dag.graph))")
+Base.show(io::IO, dag::CountDAG) = write(io, 
+    "CountDAG for $(dag.nfam) families with $(nv(dag.graph)) vertices")
 Base.length(dag::CountDAG) = dag.nfam
 
 # The copy function is important for AD applications.

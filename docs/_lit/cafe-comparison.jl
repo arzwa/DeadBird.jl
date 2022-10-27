@@ -37,7 +37,7 @@ tree = readnw(readline(joinpath(dir, "9dicots.nw")))
 df = CSV.read(joinpath(dir, "9dicots-f01-1000.cafe"), DataFrame)
 
 dag, bound = CountDAG(df, tree)
-M = PhyloBDP(ConstantDLG(), Poisson(0.55), tree, bound, cond=:observed)
+M = PhyloBDP(ConstantDLG(), Poisson(0.55), tree, bound, cond=:none)
 @model cafe(M, dag, ::Type{T}=Float64) where T = begin
     λ ~ Uniform(0,10.)
     dag ~ M(rates=ConstantDLG(λ=λ, μ=λ, κ=T(1e-7)))

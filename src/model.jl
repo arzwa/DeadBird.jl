@@ -93,10 +93,10 @@ const LPhyloBDP{T} = PhyloBDP{T,M} where {T,M<:LinearModel}
 
 # We assume the types of the RatesModel
 function PhyloBDP(rates :: RatesModel{T}, 
-                  rootp :: RootPrior, 
+                  rootp :: R, 
                   node  :: Node{I}, 
                   bound :: Int; 
-                  cond  :: Symbol = :root) where {T,I}
+                  cond  :: Symbol = :root) where {T,I,R}
     order = ModelNode{T,I}[]
     nodes = Dict{I,eltype(order)}()
     # x is the node to be copied, y is the parent of copy to created

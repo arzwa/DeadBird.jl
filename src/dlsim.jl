@@ -3,7 +3,7 @@
 # but only counts. Probably should be the `rand` function.  For posterior
 # predictive simulations, this better be fast!
 
-# Because are structs are Distributions, the Random API is not so
+# Because structs are Distributions, the Random API is not so
 # straightforward and the Distributions API would be better, however, I prefer
 # generating DataFrames whereas multivariate samplers in Distributions generate
 # vectors and matrices. Also it's a bit tricky to use that API to get the
@@ -13,16 +13,25 @@
 # should not be exposed (a bit like the Sampler type in Random)
 struct ProfileSim{T}
     model::T
-    idx  ::Dict
     cond ::Function
     cols ::Vector{Symbol}
     function ProfileSim(m::T) where T 
-        idx  = getleafindex(m)
-        cond = getcondition(m, idx)
-        ks   = first.(sort(collect(idx), by=x->last(x)))
+        cond = getcondition(m)
+        ks = sort(id.(prewalk(root(m))))
         cols = vcat(ks..., ["rejected", "extinct"])
-        new{T}(m, idx, cond, Symbol.(cols))
+        new{T}(m, cond, Symbol.(cols))
     end
+end
+
+function observedmatrix(df, model)
+    ns = getleaves(root(model))
+    df_ = df[:,id.(ns)]
+    hcat(rename(df_, name.(ns)), df[:,["rejected", "extinct"]])
+end
+
+# HACK
+function observedmatrix(df, model::MixtureModel)
+    observedmatrix(df, model.components[1])
 end
 
 """
@@ -68,32 +77,30 @@ function simulate(rng::AbstractRNG, m::MixtureModel, n::Integer=1)
     DataFrame(X, p.cols)
 end
 
-function getleafindex(m)
-    Dict(name(n)=>i for (i,n) in enumerate(getleaves(root(m))))    
-end
-
 # Should use dispatch on a type which stores those clades...
-function getcondition(m, idx)
+# Note that currently applies to dataframe with node ids in columns! (not
+# names, so dataframe before `observedmatrix`)
+function getcondition(m)
     o = getroot(m)
     if m.cond == :root
-        clades = [name.(getleaves(o[1])), name.(getleaves(o[2]))]
+        clades = [id.(getleaves(o[1])), id.(getleaves(o[2]))]
     elseif m.cond == :nowhere
-        clades = [name.(getleaves(o))]
+        clades = [id.(getleaves(o))]
     else  # no conditioning
         clades = []
     end
     x->length(clades) == 0 ? true :  
-            all([any([x[idx[sp]] > 0 for sp in c]) for c in clades])
+            all([any([x[sp] > 0 for sp in c]) for c in clades])
 end
 
 simulate_profile(m, p) = simulate_profile(Random.default_rng(), m, p)
 function simulate_profile(rng::AbstractRNG, m, p::ProfileSim)
-    @unpack idx, cond = p
+    @unpack cond = p
     i = -1
     j = 0
-    profile = zeros(Int64, length(idx)+2)
+    profile = zeros(Int64, length(m)+2)
     while i < 0 || !cond(profile)
-        full = simwalk!(rng, profile, m, root(m), idx)
+        full = simwalk!(rng, profile, m, root(m))
         all(profile .== 0) && (j += 1)
         i += 1
     end
@@ -102,7 +109,7 @@ function simulate_profile(rng::AbstractRNG, m, p::ProfileSim)
     return profile
 end
 
-function simwalk!(rng::AbstractRNG, profile, m, n, idx, X=nothing)
+function simwalk!(rng::AbstractRNG, profile, m, n, X=nothing)
     # simulate current edge
     θ  = getθ(m.rates, n)
     X′ = if isnothing(X)  # root 
@@ -112,11 +119,9 @@ function simwalk!(rng::AbstractRNG, profile, m, n, idx, X=nothing)
     else  # all other nodes
         randedge(rng, X, θ, distance(n)) 
     end
-    if isleaf(n) 
-        profile[idx[name(n)]] = X′
-        return X′ 
-    end
-    next = map(c->simwalk!(rng, profile, m, c, idx, X′), children(n))
+    profile[id(n)] = X′
+    isleaf(n) && return X′
+    next = map(c->simwalk!(rng, profile, m, c, X′), children(n))
     vcat(X′, next...)
 end
 
